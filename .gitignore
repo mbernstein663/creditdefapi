@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest_tmp/
+.venv/
+artifacts/
+reports/
+.matplotlib/
+*.egg-info/
+
+accepted_2007_to_2018Q4.csv
+rejected_2007_to_2018Q4.csv
+*.csv

@@ -1,0 +1,14 @@
+*.csv
+artifacts/
+reports/
+.agents/
+.git/
+.matplotlib/
+.pytest_cache/
+.pytest_tmp/
+__pycache__/
+*.py[cod]
+*.log
+.venv/
+tests/
+docs/
