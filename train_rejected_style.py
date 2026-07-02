@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+"""Train an accepted-loan-outcome model projected onto rejected-application-style inputs."""
+
 import argparse
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 
 from src.artifacts import ModelBundle, file_fingerprint, package_versions, save_model_bundle
-from src.calibration import ProbabilityCalibrator, calibration_summary, save_reliability_plot
+from src.calibration import (
+    ProbabilityCalibrator,
+    calibration_summary,
+    save_reliability_plot,
+    subgroup_calibration_summary,
+)
 from src.config import (
     ACCEPTED_CSV,
     ACCEPTED_TO_REJECTED_FEATURE_MAP,
@@ -16,6 +24,7 @@ from src.config import (
     FORBIDDEN_FEATURE_COLUMNS,
     REJECTED_STYLE_RISK_FEATURES,
     REPORT_DIR,
+    ROOT,
     TARGET,
 )
 from src.models import fit_model, predict_raw_default
@@ -26,6 +35,7 @@ from src.preprocessing import (
     split_count_report,
     split_manifest,
     split_row_count_report,
+    split_summary,
 )
 
 
@@ -37,6 +47,21 @@ def _read_accepted_for_rejected_style(path, sample=None):
 def _write_json(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+
+
+def _repo_path(path):
+    p = Path(path).resolve()
+    try:
+        return str(p.relative_to(ROOT))
+    except ValueError:
+        return str(p)
+
+
+def _repo_fingerprint(fingerprint):
+    out = dict(fingerprint)
+    if out.get("path"):
+        out["path"] = _repo_path(out["path"])
+    return out
 
 
 def _paths(output_path, sample):
@@ -81,6 +106,9 @@ def train_rejected_style_model(
 ):
     output_path, report_dir = _paths(output_path, sample)
     report_dir.mkdir(parents=True, exist_ok=True)
+    source_fingerprint = file_fingerprint(csv_path)
+    training_timestamp = datetime.now(timezone.utc).isoformat()
+    versions = package_versions()
     accepted = prepare_accepted_loans(_read_accepted_for_rejected_style(csv_path, sample=sample))
     splits = split_chronological(accepted)
     manifest = split_manifest(splits)
@@ -97,6 +125,8 @@ def train_rejected_style_model(
     validation_df = mapped["validation"].dropna(subset=[TARGET])
 
     selected, candidates = select_rejected_style_candidate(train_df, calibration_df, validation_df)
+    raw_selected = predict_raw_default(selected["model"], validation_df, REJECTED_STYLE_RISK_FEATURES)
+    p_selected = selected["calibrator"].predict(raw_selected)
 
     bundle = ModelBundle(
         model=selected["model"],
@@ -106,7 +136,7 @@ def train_rejected_style_model(
         policy={
             "lgd": 1.0,
             "required_return": None,
-            "approval_rule": "review unless profit inputs are supplied",
+            "approval_rule": "review only; expected profit is scenario math when profit inputs are supplied",
         },
         required_input_schema={
             "risk_features": list(REJECTED_STYLE_RISK_FEATURES),
@@ -114,9 +144,11 @@ def train_rejected_style_model(
         },
         metadata={
             "target": TARGET,
+            "target_definition": "resolved funded accepted-loan default target projected onto limited fields",
+            "target_limitation": "not true rejected-applicant default risk; rejected applications have no repayment outcomes",
             "is_smoke_sample": bool(sample),
             "sample_rows_requested": sample,
-            "source_fingerprint": file_fingerprint(csv_path),
+            "source_fingerprint": _repo_fingerprint(source_fingerprint),
             "resolved_row_count": int(len(accepted)),
             "split_manifest": manifest,
             "selected_candidate": selected["name"],
@@ -124,45 +156,65 @@ def train_rejected_style_model(
             "accepted_to_rejected_feature_map": ACCEPTED_TO_REJECTED_FEATURE_MAP,
             "excluded_rejected_decision_fields": ["policy_code"],
             "forbidden_feature_columns": sorted(FORBIDDEN_FEATURE_COLUMNS),
-            "package_versions": package_versions(),
+            "random_state": 42,
+            "package_versions": versions,
             "rejected_data_handling": "rejected applications are unlabeled and excluded",
-            "output_limits": "risk/review only unless profit inputs are supplied",
-            "training_timestamp": datetime.now(timezone.utc).isoformat(),
+            "output_limits": "limited-field risk estimate; review only for rejected-application-style inputs",
+            "training_timestamp": training_timestamp,
         },
     )
     saved = save_model_bundle(bundle, output_path)
+    validation_report = {
+        "is_smoke_sample": bool(sample),
+        "sample_rows_requested": sample,
+        "artifact_path": str(saved),
+        "training_timestamp": training_timestamp,
+        "package_versions": versions,
+        "source_fingerprint": source_fingerprint,
+        "resolved_row_count": int(len(accepted)),
+        "split_manifest": {k: v for k, v in manifest.items() if k != "test_ids"},
+        "split_summary": split_summary(splits),
+        "feature_columns": list(REJECTED_STYLE_RISK_FEATURES),
+        "selected_candidate": selected["name"],
+        "selection_rule": bundle.metadata["selection_rule"],
+        "subgroup_calibration": subgroup_calibration_summary(validation_df, TARGET, p_selected),
+        "candidates": [
+            {
+                "name": c["name"],
+                "class_weight": c["class_weight"],
+                "probability": c["probability"],
+            }
+            for c in candidates
+        ],
+    }
+    _write_json(report_dir / "rejected_style_validation_metrics.json", validation_report)
     _write_json(
-        report_dir / "rejected_style_validation_metrics.json",
+        ROOT / "docs" / "limited_field_model_card.json",
         {
-            "is_smoke_sample": bool(sample),
-            "sample_rows_requested": sample,
-            "source_fingerprint": file_fingerprint(csv_path),
-            "resolved_row_count": int(len(accepted)),
-            "split_manifest": {k: v for k, v in manifest.items() if k != "test_ids"},
+            "model_type": bundle.model_type,
+            "target": bundle.metadata["target_definition"],
+            "target_limitation": bundle.metadata["target_limitation"],
+            "artifact_path": _repo_path(saved),
+            "feature_columns": bundle.feature_columns,
+            "policy": bundle.policy,
             "selected_candidate": selected["name"],
             "selection_rule": bundle.metadata["selection_rule"],
-            "candidates": [
-                {
-                    "name": c["name"],
-                    "class_weight": c["class_weight"],
-                    "probability": c["probability"],
-                }
-                for c in candidates
-            ],
+            "split_summary": validation_report["split_summary"],
+            "source_fingerprint": _repo_fingerprint(source_fingerprint),
+            "training_timestamp": training_timestamp,
+            "package_versions": versions,
         },
     )
-    raw_selected = predict_raw_default(bundle.model, validation_df, REJECTED_STYLE_RISK_FEATURES)
-    p_validation = bundle.calibrator.predict(raw_selected)
     save_reliability_plot(
         validation_df[TARGET],
-        p_validation,
+        p_selected,
         report_dir / "rejected_style_reliability.png",
     )
     return saved
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train rejected-style risk/review model.")
+    parser = argparse.ArgumentParser(description="Train limited-field risk/review model.")
     parser.add_argument("--csv", default=ACCEPTED_CSV)
     parser.add_argument("--output", default=DEFAULT_REJECTED_STYLE_BUNDLE)
     parser.add_argument("--sample", type=int, default=None)

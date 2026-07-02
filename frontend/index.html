@@ -21,7 +21,7 @@
 <body>
   <main>
     <h1>Credit Risk Review</h1>
-    <p>Rejected-style inputs return risk/review only unless profit inputs are supplied.</p>
+    <p>Limited-field risk estimate using accepted-loan outcomes projected onto rejected-application-style inputs.</p>
     <form id="score-form">
       <label>Amount Requested <input name="amount_requested" type="number" min="1" step="100" required></label>
       <label>Risk Score <input name="risk_score" type="number" min="300" max="900" required></label>
@@ -57,8 +57,9 @@
         return;
       }
       const pct = (body.p_default * 100).toFixed(1);
-      const profit = body.expected_profit == null ? "" : ` Expected profit: $${body.expected_profit.toFixed(2)}.`;
-      result.textContent = `Decision: ${body.decision}. Default risk: ${pct}%. ${body.reason}.${profit}`;
+      const profit = body.expected_profit == null ? "" : ` Scenario expected profit: $${body.expected_profit.toFixed(2)}.`;
+      const note = body.model_note ? ` ${body.model_note}.` : "";
+      result.textContent = `Review result: ${body.decision}. Default risk: ${pct}%. ${body.reason}.${profit}${note}`;
     });
   </script>
 </body>

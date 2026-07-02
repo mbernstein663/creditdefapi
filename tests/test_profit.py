@@ -14,3 +14,8 @@ def test_approval_rule_rejects_negative_expected_profit():
 
     assert profit == -400
     assert not approve([profit])[0]
+
+
+def test_required_return_rule_is_inclusive():
+    assert approve([80], [0.08], required_return=0.08)[0]
+    assert not approve([80], [0.08], required_return=0.09)[0]

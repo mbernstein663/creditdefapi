@@ -18,9 +18,13 @@ DEFAULT_REJECTED_STYLE_BUNDLE = _path_from_env(
     "REJECTED_STYLE_MODEL_BUNDLE",
     ARTIFACT_DIR / "rejected_style_model.joblib",
 )
+DEFAULT_PROFIT_BUNDLE = _path_from_env("PROFIT_MODEL_BUNDLE", ARTIFACT_DIR / "direct_profit_model.joblib")
 
 TARGET = "default"
+PROFIT_TARGET = "realized_profit"
 DEFAULT_LGD = 1.0
+DEFAULT_REQUIRED_RETURN = 0.0
+POST_PRICING_FIELDS = ["int_rate", "grade", "sub_grade", "initial_list_status"]
 
 BAD_STATUSES = {
     "Charged Off",

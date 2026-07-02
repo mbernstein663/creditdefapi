@@ -15,6 +15,7 @@ from .config import (
     REJECTED_STYLE_NUMERIC_RISK_FEATURES,
     REJECTED_RAW_ALIASES,
     TARGET,
+    UNRESOLVED_STATUSES,
 )
 
 
@@ -39,6 +40,10 @@ def construct_target(df: pd.DataFrame) -> pd.DataFrame:
 
     out = df.copy()
     status = out["loan_status"].fillna("").astype(str).str.strip()
+    known = GOOD_STATUSES | BAD_STATUSES | UNRESOLVED_STATUSES
+    unknown = sorted(set(status.unique()) - known)
+    if unknown:
+        raise ValueError(f"unknown loan_status values: {unknown}")
     resolved = status.isin(GOOD_STATUSES | BAD_STATUSES)
     out = out.loc[resolved].copy()
     status = status.loc[resolved]
@@ -78,6 +83,9 @@ def split_chronological(
         raise ValueError(f"missing split date column: {date_col}")
     if round(sum(ratios), 8) != 1:
         raise ValueError("split ratios must sum to 1")
+    missing_dates = int(df[date_col].isna().sum())
+    if missing_dates:
+        raise ValueError(f"{date_col} has {missing_dates} missing values")
 
     ordered = df.sort_values([date_col, "id"] if "id" in df.columns else [date_col]).copy()
     n = len(ordered)
@@ -145,6 +153,24 @@ def split_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(rows)
+
+
+def split_summary(splits: dict[str, pd.DataFrame]) -> list[dict]:
+    rows = []
+    for split, frame in splits.items():
+        row = {"split": split, "rows": int(len(frame))}
+        if TARGET in frame.columns and len(frame):
+            row["default_rate"] = float(frame[TARGET].mean())
+        else:
+            row["default_rate"] = None
+        if "issue_dt" in frame.columns and len(frame):
+            row["date_min"] = frame["issue_dt"].min().isoformat()
+            row["date_max"] = frame["issue_dt"].max().isoformat()
+        else:
+            row["date_min"] = None
+            row["date_max"] = None
+        rows.append(row)
+    return rows
 
 
 def split_row_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:

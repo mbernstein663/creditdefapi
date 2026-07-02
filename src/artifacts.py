@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import hashlib
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
@@ -56,8 +57,12 @@ def package_versions() -> dict[str, str]:
 def file_fingerprint(path: str | Path) -> dict:
     p = Path(path)
     stat = p.stat()
+    digest = hashlib.sha256()
+    with p.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
     return {
         "path": str(p.resolve()),
         "size_bytes": stat.st_size,
-        "mtime_ns": stat.st_mtime_ns,
+        "sha256": digest.hexdigest(),
     }

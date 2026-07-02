@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import pandas as pd
 
@@ -43,8 +45,13 @@ def test_locked_evaluation_uses_saved_test_ids(tmp_path):
     save_model_bundle(bundle, bundle_path)
 
     output = evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
+    result = json.loads(output.read_text(encoding="utf-8"))
 
     assert output.name == "locked_test_metrics.json"
+    assert result["test_row_count"] == 1
+    assert result["test_default_rate"] == 1.0
+    assert result["profit_policy"]["actual_default_rate"] == 1.0
+    assert result["profit_policy"]["total_realized_profit"] == -800.0
 
 
 def test_locked_evaluation_fails_without_saved_test_ids(tmp_path):
@@ -75,3 +82,14 @@ def test_locked_evaluation_fails_without_saved_test_ids(tmp_path):
 
     with pytest.raises(ValueError, match="missing saved test split IDs"):
         evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
+
+
+def test_file_fingerprint_changes_when_same_size_content_changes(tmp_path):
+    path = tmp_path / "data.csv"
+    path.write_text("abc\n", encoding="utf-8")
+    first = file_fingerprint(path)
+    path.write_text("abd\n", encoding="utf-8")
+    second = file_fingerprint(path)
+
+    assert first["size_bytes"] == second["size_bytes"]
+    assert first["sha256"] != second["sha256"]

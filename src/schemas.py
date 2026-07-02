@@ -31,16 +31,16 @@ class AcceptedScoreRequest(ProfitInputs):
     dti: float = Field(ge=0)
     fico_range_low: float = Field(ge=300, le=900)
     fico_range_high: float = Field(ge=300, le=900)
-    delinq_2yrs: float = 0
-    inq_last_6mths: float = 0
-    open_acc: float = 0
-    pub_rec: float = 0
-    revol_bal: float = 0
-    revol_util: float = 0
-    total_acc: float = 0
-    mort_acc: float = 0
-    acc_open_past_24mths: float = 0
-    pub_rec_bankruptcies: float = 0
+    delinq_2yrs: Optional[float] = Field(default=None, ge=0)
+    inq_last_6mths: Optional[float] = Field(default=None, ge=0)
+    open_acc: Optional[float] = Field(default=None, ge=0)
+    pub_rec: Optional[float] = Field(default=None, ge=0)
+    revol_bal: Optional[float] = Field(default=None, ge=0)
+    revol_util: Optional[float] = Field(default=None, ge=0)
+    total_acc: Optional[float] = Field(default=None, ge=0)
+    mort_acc: Optional[float] = Field(default=None, ge=0)
+    acc_open_past_24mths: Optional[float] = Field(default=None, ge=0)
+    pub_rec_bankruptcies: Optional[float] = Field(default=None, ge=0)
     grade: str
     sub_grade: str
     emp_length: str
@@ -48,8 +48,8 @@ class AcceptedScoreRequest(ProfitInputs):
     verification_status: str
     purpose: str
     addr_state: str
-    application_type: str = "Individual"
-    initial_list_status: str = "w"
+    application_type: Optional[str] = None
+    initial_list_status: Optional[str] = None
 
 
 class ScoreResponse(BaseModel):

@@ -18,6 +18,7 @@ matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import average_precision_score, roc_auc_score
 
 
 @dataclass
@@ -70,12 +71,52 @@ def calibration_summary(y_true, p_default, bins: int = 10) -> dict:
         )
         .to_dict(orient="records")
     )
+    actual = frame["actual"].astype(int)
+    predicted = frame["predicted"].astype(float)
+    roc_auc = roc_auc_score(actual, predicted) if actual.nunique() == 2 else None
+    pr_auc = average_precision_score(actual, predicted) if actual.nunique() == 2 else None
     return {
-        "brier_score": float(np.mean((frame["predicted"] - frame["actual"]) ** 2)),
-        "mean_predicted_default": float(frame["predicted"].mean()),
-        "actual_default_rate": float(frame["actual"].mean()),
+        "roc_auc": float(roc_auc) if roc_auc is not None else None,
+        "pr_auc": float(pr_auc) if pr_auc is not None else None,
+        "brier_score": float(np.mean((predicted - actual) ** 2)),
+        "mean_predicted_default": float(predicted.mean()),
+        "actual_default_rate": float(actual.mean()),
         "deciles": deciles,
     }
+
+
+def subgroup_calibration_summary(frame: pd.DataFrame, y_col: str, p_default) -> dict[str, list[dict]]:
+    data = pd.DataFrame({"actual": frame[y_col], "predicted": p_default}, index=frame.index).dropna()
+    out: dict[str, list[dict]] = {}
+
+    def summarize(name: str, groups) -> None:
+        grouped = data.assign(group=groups).dropna(subset=["group"])
+        if grouped.empty:
+            return
+        rows = (
+            grouped.groupby("group", as_index=False)
+            .agg(
+                count=("actual", "size"),
+                mean_predicted_default=("predicted", "mean"),
+                observed_default_rate=("actual", "mean"),
+                brier_score=("predicted", lambda p: float(np.mean((p - grouped.loc[p.index, "actual"]) ** 2))),
+            )
+            .to_dict(orient="records")
+        )
+        out[name] = rows
+
+    for column in ["term_months", "grade", "sub_grade"]:
+        if column in frame.columns:
+            summarize(column, frame[column])
+    amount_col = "loan_amnt" if "loan_amnt" in frame.columns else "amount_requested" if "amount_requested" in frame.columns else None
+    if amount_col:
+        amount = pd.to_numeric(frame[amount_col], errors="coerce")
+        try:
+            bands = pd.qcut(amount, q=4, duplicates="drop").astype(str)
+        except ValueError:
+            bands = amount.astype(str)
+        summarize(f"{amount_col}_band", bands)
+    return out
 
 
 def save_reliability_plot(y_true, p_default, path, bins: int = 10):

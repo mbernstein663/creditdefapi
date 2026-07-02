@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from src.artifacts import load_model_bundle
-from src.config import DEFAULT_ACCEPTED_BUNDLE, DEFAULT_REJECTED_STYLE_BUNDLE, ROOT
+from src.config import DEFAULT_ACCEPTED_BUNDLE, DEFAULT_REJECTED_STYLE_BUNDLE, PROFIT_INPUT_COLUMNS, ROOT
 from src.schemas import AcceptedScoreRequest, RejectedRiskRequest, ScoreResponse
 from src.scorer import score_records
 
@@ -24,15 +24,21 @@ def rejected_style_bundle():
     return load_model_bundle(DEFAULT_REJECTED_STYLE_BUNDLE)
 
 
-def _artifact_errors(path, require_test_ids=False):
+def _artifact_errors(path):
     if not Path(path).exists():
         return [f"missing artifact: {path}"]
     bundle = load_model_bundle(path)
     errors = []
     if not bundle.metadata.get("source_fingerprint"):
         errors.append(f"incomplete artifact metadata: {path}")
-    if require_test_ids and not bundle.metadata.get("split_manifest", {}).get("test_ids"):
-        errors.append(f"missing locked test split IDs: {path}")
+    if bundle.calibrator is None:
+        errors.append(f"missing calibrator: {path}")
+    if not bundle.feature_columns:
+        errors.append(f"missing feature columns: {path}")
+    if not bundle.required_input_schema:
+        errors.append(f"missing required input schema: {path}")
+    if not bundle.policy:
+        errors.append(f"missing scoring policy: {path}")
     return errors
 
 
@@ -55,7 +61,7 @@ def health():
 
 @app.get("/ready")
 def ready():
-    errors = _artifact_errors(DEFAULT_ACCEPTED_BUNDLE, require_test_ids=True)
+    errors = _artifact_errors(DEFAULT_ACCEPTED_BUNDLE)
     errors += _artifact_errors(DEFAULT_REJECTED_STYLE_BUNDLE)
     if errors:
         raise HTTPException(status_code=503, detail={"artifact_errors": errors})
@@ -64,10 +70,14 @@ def ready():
 
 @app.post("/score", response_model=ScoreResponse)
 def score_accepted(request: AcceptedScoreRequest):
+    record = request.model_dump()
+    for column in PROFIT_INPUT_COLUMNS:
+        if record.get(column) is None:
+            record.pop(column)
     return _score(
-        request.model_dump(exclude_none=True),
+        record,
         accepted_bundle,
-        "accepted-loan model; profit decision only when profit inputs are supplied",
+        "post-pricing accepted-loan model; valid only after LendingClub grade/rate fields are available",
     )
 
 
@@ -76,7 +86,7 @@ def score_rejected_risk(request: RejectedRiskRequest):
     return _score(
         request.model_dump(exclude_none=True),
         rejected_style_bundle,
-        "risk is estimated from resolved accepted loans mapped to rejected-style fields",
+        "limited-field risk estimate using accepted-loan outcomes projected onto rejected-application-style inputs",
     )
 
 

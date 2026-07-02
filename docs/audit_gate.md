@@ -1,6 +1,6 @@
 # Subagent Audit Gate
 
-Read-only audit was run before API/frontend work.
+Read-only audit was run before API/frontend changes.
 
 Roles:
 
@@ -13,16 +13,12 @@ Roles:
 
 Changes made from audit findings:
 
-- Rejected-style scoring states that risk is trained on resolved accepted loans mapped to rejected-style fields.
-- `policy_code` is mapped for documentation/schema only and is not required as a model feature.
-- Training reports test row counts only; non-test label counts are reported separately.
-- Scoring/evaluation fail closed if a bundle has no calibrator.
-- API/batch scoring uses the locked bundle LGD by default.
-- Profit inputs must be present and positive before expected-profit decisions are made.
-- Model training sets `random_state=42`.
-- `--sample` uses `nrows` so smoke runs do not read the full CSV.
-- `--sample` writes smoke artifacts/reports instead of production artifact/report names.
-- Locked evaluation uses saved test IDs from the trained bundle and checks the source CSV fingerprint.
-- Scoring returns LGD and approval policy metadata with profit outputs.
-- Batch scoring validates profit inputs per row.
-- Docker excludes raw CSVs, reports, caches, and ignored artifacts from the image context.
+- Full accepted scoring is documented as post-pricing/post-underwriting because it uses LendingClub-generated fields such as `int_rate`, `grade`, `sub_grade`, and `initial_list_status`.
+- Limited-field scoring language now says: limited-field risk estimate using accepted-loan outcomes projected onto rejected-application-style inputs.
+- Limited-field scoring remains `review` even when scenario profit inputs are supplied.
+- API accepted-score optional fields no longer default missing borrower/loan fields to artificial zeros.
+- Serving validates bundle feature columns against configured allowlists.
+- Unknown loan statuses and missing split dates fail explicitly.
+- Profit policy uses `expected_return >= required_return` when a required return is set.
+- Locked accepted-loan test evaluation uses the saved test IDs, content-hash source fingerprint, locked LGD, and locked required-return policy.
+- Training and locked-test reports include source SHA-256, split summaries, selected policy, calibration metrics, subgroup calibration where available, and compact model-card artifacts.

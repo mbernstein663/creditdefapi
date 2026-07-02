@@ -1,3 +1,0 @@
-› You're right, but thats why we have the validation set (WOW CRAZY REVEAL) so we can reliably adjust our model until we get a
-  stronger outcome. retry with an LGD of 0.7. The profit math might be off or the dataset is uncalibrated because only 89,000 are
-  approved and yet its still starkly negative, yet the default predictions are strong.

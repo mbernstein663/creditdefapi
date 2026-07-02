@@ -40,6 +40,13 @@ def test_target_construction_maps_resolved_and_drops_unresolved():
     assert out[TARGET].tolist() == [0, 0, 1, 1, 1]
 
 
+def test_unknown_status_is_not_silently_dropped():
+    df = pd.DataFrame({"loan_status": ["Fully Paid", "Mystery Status"]})
+
+    with pytest.raises(ValueError, match="unknown loan_status"):
+        construct_target(df)
+
+
 def test_rejected_input_is_not_labeled_by_assumption():
     rejected = pd.DataFrame({"Amount Requested": [1000], "Risk_Score": [700]})
 
@@ -124,3 +131,11 @@ def test_split_manifest_saves_test_ids_and_months_do_not_straddle_splits():
     manifest = split_manifest(splits)
     assert "test_ids" in manifest
     assert set(manifest["test_ids"]) == set(splits["test"]["id"].astype(str))
+
+
+def test_split_chronological_fails_on_missing_split_dates():
+    df = pd.DataFrame({"loan_status": ["Fully Paid"], "issue_d": ["not-a-date"]})
+    prepared = prepare_accepted_loans(df)
+
+    with pytest.raises(ValueError, match="issue_dt has 1 missing values"):
+        split_chronological(prepared)
