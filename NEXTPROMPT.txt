@@ -1,0 +1,19 @@
+I am now satisfied and trust the repo methodology, but now I want better validation results (NEVER give me test results unless I ask).
+Run a read-only results audit using subagents.
+
+Goal: Find the source of poor validation results and reason for discrepancy between expected and realized profit.
+
+Required subagents:
+
+1. profit prediction reviewer (calibration, accuracy, models)
+2. Profit policy reviewer (policy selection, approach)
+
+The audit must be read-only.
+Subagents must not edit files.
+Each subagent must return:
+
+- Why current validation results are poor
+- what pipeline is missing to improve validation results
+- possible critical math issues
+- where signal comes from/where results are failing
+- recommended new models, adjustments, or approaches

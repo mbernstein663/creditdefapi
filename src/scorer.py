@@ -4,9 +4,20 @@ import pandas as pd
 import numpy as np
 
 from .artifacts import ModelBundle
-from .config import ACCEPTED_RISK_FEATURES, DEFAULT_LGD, PROFIT_INPUT_COLUMNS, REJECTED_STYLE_RISK_FEATURES
-from .preprocessing import ensure_no_forbidden_features, normalize_rejected_input, parse_term_months
-from .profit import approve, expected_profit, expected_return
+from .config import (
+    ACCEPTED_RISK_FEATURES,
+    DEFAULT_LGD,
+    PRODUCT_MODE_POST_PRICING,
+    PROFIT_INPUT_COLUMNS,
+    REJECTED_STYLE_RISK_FEATURES,
+)
+from .preprocessing import (
+    ensure_no_forbidden_features,
+    feature_columns_for_product_mode,
+    normalize_rejected_input,
+    parse_term_months,
+)
+from .profit import approve, expected_npv_profit, expected_profit, expected_return
 
 
 def _prepare_frame(frame: pd.DataFrame, bundle: ModelBundle) -> pd.DataFrame:
@@ -17,9 +28,11 @@ def _prepare_frame(frame: pd.DataFrame, bundle: ModelBundle) -> pd.DataFrame:
 
 
 def _validate_bundle_features(bundle: ModelBundle) -> None:
+    product_mode = bundle.metadata.get("product_mode", PRODUCT_MODE_POST_PRICING)
     expected = {
-        "accepted": ACCEPTED_RISK_FEATURES,
+        "accepted": feature_columns_for_product_mode(product_mode),
         "rejected_style": REJECTED_STYLE_RISK_FEATURES,
+        "direct_profit": ACCEPTED_RISK_FEATURES,
     }.get(bundle.model_type)
     if expected is None:
         raise ValueError(f"unknown model type: {bundle.model_type}")
@@ -28,7 +41,7 @@ def _validate_bundle_features(bundle: ModelBundle) -> None:
 
 
 def _approval_rule(required_return) -> str:
-    return "expected_profit > 0" if required_return is None else "expected_return >= required_return"
+    return "expected_profit > 0" if required_return is None else "expected_return > required_return"
 
 
 def _missing(columns, frame: pd.DataFrame) -> list[str]:
@@ -37,7 +50,10 @@ def _missing(columns, frame: pd.DataFrame) -> list[str]:
 
 def predict_default(bundle: ModelBundle, frame: pd.DataFrame):
     _validate_bundle_features(bundle)
-    ensure_no_forbidden_features(bundle.feature_columns)
+    ensure_no_forbidden_features(
+        bundle.feature_columns,
+        product_mode=bundle.metadata.get("product_mode", PRODUCT_MODE_POST_PRICING),
+    )
     missing = _missing(bundle.feature_columns, frame)
     if missing:
         raise ValueError(f"missing required scoring fields: {', '.join(missing)}")
@@ -57,8 +73,10 @@ def score_frame(frame: pd.DataFrame, bundle: ModelBundle, lgd: float | None = No
     scored = data.copy()
     scored["p_default"] = p_default
     locked_lgd = bundle.policy.get("lgd", DEFAULT_LGD) if lgd is None else lgd
+    good_profit_haircut = float(bundle.policy.get("good_profit_haircut", 1.0))
     required_return = bundle.policy.get("required_return")
     scored["lgd"] = locked_lgd
+    scored["good_profit_haircut"] = good_profit_haircut
     scored["required_return"] = required_return
     scored["approval_rule"] = _approval_rule(required_return)
 
@@ -74,6 +92,8 @@ def score_frame(frame: pd.DataFrame, bundle: ModelBundle, lgd: float | None = No
     valid_profit = profit_values.notna().all(axis=1) & (profit_values > 0).all(axis=1)
     scored["expected_profit"] = pd.NA
     scored["expected_return"] = pd.NA
+    scored["expected_npv_profit"] = pd.NA
+    scored["annualized_return"] = pd.NA
     scored["decision"] = "review"
     scored["reason"] = "risk/review only; invalid profit inputs"
     if valid_profit.any():
@@ -84,9 +104,27 @@ def score_frame(frame: pd.DataFrame, bundle: ModelBundle, lgd: float | None = No
             profit_values.loc[valid_profit, "term_months"],
             profit_values.loc[valid_profit, "installment"],
             lgd=locked_lgd,
+            good_profit_haircut=good_profit_haircut,
         )
         er = expected_return(ep, profit_values.loc[valid_profit, "funded_amnt"])
         decisions = approve(ep, er, required_return)
+        use_npv = bool(bundle.policy.get("use_npv"))
+        if use_npv:
+            npv = expected_npv_profit(
+                valid["p_default"],
+                profit_values.loc[valid_profit, "funded_amnt"],
+                profit_values.loc[valid_profit, "term_months"],
+                profit_values.loc[valid_profit, "installment"],
+                lgd=locked_lgd,
+                annual_discount_rate=float(bundle.policy.get("annual_discount_rate", 0.08)),
+                servicing_cost_rate=float(bundle.policy.get("servicing_cost_rate", 0.0)),
+                good_profit_haircut=good_profit_haircut,
+            )
+            annualized = npv / profit_values.loc[valid_profit, "funded_amnt"] / (
+                profit_values.loc[valid_profit, "term_months"] / 12.0
+            )
+            scored.loc[valid_profit, "expected_npv_profit"] = npv
+            scored.loc[valid_profit, "annualized_return"] = annualized
         scored.loc[valid_profit, "expected_profit"] = ep
         scored.loc[valid_profit, "expected_return"] = er
         if bundle.model_type != "rejected_style":
@@ -109,9 +147,12 @@ def score_records(records, bundle: ModelBundle, lgd: float | None = None) -> lis
         "p_default",
         "expected_profit",
         "expected_return",
+        "expected_npv_profit",
+        "annualized_return",
         "decision",
         "reason",
         "lgd",
+        "good_profit_haircut",
         "required_return",
         "approval_rule",
     ]

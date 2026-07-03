@@ -1,219 +1,190 @@
-# LendingClub Accepted-Loan Risk/Profit Pipeline
+# Credit Risk Scoring Pipeline
 
-This repo is an accepted funded-loan default and profit scoring pipeline. It is not a full rejected-applicant underwriting engine.
+This repo is an accepted/funded-loan risk and profit scoring system. It is not a production underwriting engine.
 
-It trains calibrated default-risk models from LendingClub accepted loans with resolved repayment outcomes, then applies a simplified expected-value policy to funded-loan terms.
+It supports two label modes for accepted loans with observed repayment outcomes:
+
+- `resolved_default`
+- `default_within_horizon`
+
+It also supports two scoring/product modes:
+
+- `post_pricing_investment`
+- `pre_underwriting_applicant`
+
+Rejected applications are not treated as observed defaults or non-defaults. They are review-only unless real repayment outcomes exist.
 
 ## Scope
 
-- Accepted funded-loan default modeling
-- Post-hoc probability calibration
-- Simplified expected-profit and expected-return policy logic
+- Accepted/funded loan default modeling
+- Probability calibration
+- Expected-profit policy logic
 - Batch scoring and FastAPI scoring from saved artifacts
-- Limited-field risk estimate using accepted-loan outcomes projected onto rejected-application-style inputs
+- Compact model and evaluation reports
+- Limited-field risk scoring for rejected-style inputs
 
-Rejected applications do not have repayment outcomes in this dataset. They are never assigned fake `default = 0` or `default = 1` labels and are not used for supervised training, calibration, validation, locked test evaluation, or realized-profit backtesting.
+## Target Modes
 
-## Target
+`resolved_default` is the default mode. It uses resolved good/bad loan statuses only.
 
-The baseline target is eventual resolved default among accepted funded loans.
+`default_within_horizon` is conservative:
 
-Default:
+- labels default only when a bad status appears within the chosen horizon
+- labels non-default only when there is enough observation time
+- excludes censored rows instead of guessing
 
-- `Charged Off`
-- `Default`
-- `Does not meet the credit policy. Status:Charged Off`
+The default horizon is 36 months.
 
-Non-default:
+## Product Modes
 
-- `Fully Paid`
-- `Does not meet the credit policy. Status:Fully Paid`
+`post_pricing_investment`
 
-Active, late, blank, unknown, and unresolved statuses are excluded from the baseline target. Unknown statuses fail explicitly instead of being silently labeled.
+- current accepted/funded loan scoring path
+- may use lender-generated pricing fields such as `grade`, `sub_grade`, `int_rate`, and `initial_list_status`
+- this is the current default path in the repo
 
-Limitation: this target predicts resolved default among accepted/funded loans. It does not estimate risk for all applicants, and it does not solve selection bias from rejected applications.
+`pre_underwriting_applicant`
 
-Fixed-horizon extension point: a future target such as default/charge-off within 36 months of issue date should add explicit issue-date plus performance-window logic before labeling current or unresolved loans. Do not label unresolved/current loans as good unless the fixed performance window is correctly implemented.
+- excludes lender-generated pricing fields
+- risk/review only unless the needed economic inputs are available
+- do not claim it is a complete underwriting engine
 
-## Scoring Moment
+## Profit Logic
 
-| Model path | Valid scoring moment | Fields allowed | Output limits |
-| --- | --- | --- | --- |
-| Full accepted model, `/score` | Post-pricing/post-underwriting, after LendingClub grade/rate fields exist | May use `grade`, `sub_grade`, `int_rate`, `initial_list_status` | Calibrated accepted-loan risk plus profit policy when profit inputs are present |
-| Pre-underwriting model | Before LendingClub pricing/grade assignment | Must exclude LendingClub-generated grade/rate/listing fields | Not implemented in this repo |
-| Limited-field model, `/score/rejected-risk` and frontend | Rejected-application-style triage only | Uses `amount_requested`, `risk_score`, `dti`, `zip_code`, `state`, `employment_length` | Review-only limited-field risk estimate; no true rejected-applicant default labels or realized-profit claims |
-
-## Leakage Controls
-
-Risk-model features are explicit allowlists in `src/config.py`. Post-origination status, payment, recovery, settlement, hardship, collection, and realized-outcome fields are forbidden as model features.
-
-Profit inputs are separate from risk features:
-
-- `funded_amnt`
-- `term_months`
-- `installment`
-
-`total_pymnt` is used only for realized-profit backtesting on accepted funded loans with observed outcomes.
-
-## Profit Policy
-
-Expected profit is a simplified EV approximation:
+The decision rule is expected-profit based:
 
 ```text
-(1 - p_default) * ((installment * term_months) - funded_amnt)
-+ p_default * (-(LGD * funded_amnt))
+Expected Profit_i =
+(1 - p_default_i) × [good_profit_haircut × ((installment_i × term_months_i) - funded_amnt_i)]
++ p_default_i × [-(LGD × funded_amnt_i)]
 ```
 
-Expected return:
+Expected return is:
 
 ```text
 expected_return = expected_profit / funded_amnt
 ```
 
-The selected baseline policy uses:
+Optional NPV-style economics are supported behind config/policy metadata, but the simple EV formula remains the default.
+
+Training selects a conservative `good_profit_haircut` and `required_return` on validation data only. The haircut is a simple, documented scenario assumption for the fact that many fully paid loans do not pay the full scheduled term; it is not a calibrated cash-profit model. Candidate policies must have non-negative scenario expected profit, non-negative expected return, non-negative required return, and positive realized validation profit. A loan is approved when:
 
 ```text
-approve = expected_return >= required_return
+expected_return > required_return
 ```
 
-The default LGD is `1.00` and the default required return is `0.00`. Validation reports include LGD and required-return sensitivity. The simplified EV math does not model prepayment, discounting, servicing cost, recoveries, cost of capital, or timing of default.
+If every non-empty validation policy loses realized money, training may lock a reject-all policy and record that warning in the model artifact.
 
-## Direct Profit Model Challenger
+Realized validation profit is backtest evidence. Expected-profit dollars are scenario estimates used for screening, not exact profit forecasts.
 
-The direct profit challenger predicts realized loan profit directly:
+## Reports
 
-```text
-realized_profit = total_pymnt - funded_amnt
-```
+Training and locked evaluation generate compact outputs under `reports/`:
 
-It trains only on accepted funded loans with observed repayment outcomes. Rejected loans are not used as profit labels because their repayment outcomes are unobserved.
+- `model_card.md`
+- `evaluation_summary.json`
+- `calibration_table.csv`
+- `policy_summary.csv`
+- `sensitivity_summary.csv`
+- `cohort_backtest.csv`
+- `bootstrap_intervals.csv`
+- `proxy_risk_diagnostics.csv`
+- `fairness_caveat.md`
+- `policy_selection_validation.csv`
 
-This is a challenger to the calibrated default-risk policy, not a replacement. It uses the same accepted-loan origination-time feature allowlist as the full accepted model, selects both model and approval policy on validation only, then evaluates the locked policy on the saved test split.
+These are summary artifacts, not compliance claims.
 
-Supported challenger policies:
+## How To Run
 
-- approve if `predicted_profit > threshold`
-- approve top X percent by `predicted_profit`
-
-Reports compare the default-risk policy and direct-profit policy on realized profit, approval rate, default rate, and profit per dollar funded. Do not claim the challenger is better unless validation and locked-test results support it.
-
-## Quick Start
-
-In PowerShell:
+Install:
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+python -m pip install -e .[dev]
 ```
 
-Run the full pipeline:
+Preprocess, train, calibrate, and select policy for the accepted-loan model:
 
 ```powershell
 python train.py
+```
+
+Fixed-horizon accepted-loan training:
+
+```powershell
+python train.py --target-mode default_within_horizon --horizon-months 36
+```
+
+Train the limited-field review model:
+
+```powershell
 python train_rejected_style.py
+```
+
+Train the direct-profit challenger:
+
+```powershell
 python train_profit.py
+```
+
+Generate compact validation evaluation reports:
+
+```powershell
+python evaluation.py
+```
+
+Locked evaluation of the accepted-loan bundle:
+
+```powershell
 python evaluate_locked.py
+```
+
+Locked evaluation of the direct-profit challenger:
+
+```powershell
 python evaluate_profit_locked.py
 ```
 
-Run the API and frontend:
+Launch the API:
 
 ```powershell
 python -m uvicorn api:app --reload
 ```
 
-Open `http://127.0.0.1:8000/`.
-
-## Pipeline
-
-Install:
+Batch scoring:
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
+python batch.py input.csv output.csv --bundle artifacts\accepted_model.joblib
 ```
 
-Smoke-test accepted-loan training:
+Tests:
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train.py --sample 200000
+python -m pytest
 ```
 
-Smoke-test the limited-field model:
+## Artifact Locations
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train_rejected_style.py --sample 200000
-```
+Large data and model artifacts should live outside version control:
 
-Train final accepted-loan model:
+- `data/`
+- `artifacts/`
+- `models/`
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train.py
-```
+Compact report outputs live under `reports/` and are intended to be easy to inspect and, when appropriate, commit.
 
-Train final limited-field risk model:
+## What Not To Claim
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train_rejected_style.py
-```
+- Do not claim production underwriting.
+- Do not claim rejected-applicant outcome prediction.
+- Do not claim fair-lending validation.
+- Do not claim selection-bias is solved.
+- Do not claim locked test results were used to choose the model or policy.
+- Do not claim profit estimates are exact. They are scenario-based and depend on the stated LGD and policy assumptions.
+- Do not claim the fixed-horizon target is a perfect default-time model. It uses conservative observation proxies.
 
-Smoke-test the direct profit challenger:
+## Notes
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train_profit.py --sample 20000
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" evaluate_profit_locked.py --bundle artifacts\direct_profit_model_smoke.joblib
-```
-
-Train final direct profit challenger:
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train_profit.py
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" evaluate_profit_locked.py
-```
-
-Evaluate the locked accepted-loan model on the test set only after training is complete:
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" evaluate_locked.py
-```
-
-Run API:
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m uvicorn api:app --reload
-```
-
-Open `http://127.0.0.1:8000/` for the limited-field review frontend.
-
-## Reports
-
-Training writes ignored local reports under `reports/` and compact model cards under `docs/`:
-
-- split date ranges, row counts, and default rates
-- selected candidate and policy
-- ROC AUC, PR AUC, Brier score, mean predicted default rate, actual default rate
-- decile calibration table
-- subgroup calibration where available: term, grade/sub-grade, amount band
-- expected and realized validation profit metrics where available
-- LGD and required-return sensitivity on validation data
-- direct-profit challenger validation, locked-test, decile lift, and comparison outputs
-- source CSV SHA-256 fingerprint, feature list, package versions, and training timestamp
-
-Large CSVs, model binaries, and bulky generated reports are ignored by git.
-
-## Tests
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pytest
-```
-
-Tests use synthetic data and cover target mapping, unresolved-status exclusion, no fake rejected labels, leakage guards, chronological split discipline, required-return policy behavior, artifact hashing/loading, batch scoring, API validation, and missing-field handling.
-
-## Limits
-
-- No reject inference is implemented.
-- No pre-underwriting model is implemented.
-- No realized-profit claims are made for rejected applications.
-- Candidate selection is intentionally small: balanced logistic regression versus unweighted logistic regression.
-- The full accepted model is valid only when LendingClub-generated grade/rate fields are available at the scoring moment.
-- The direct-profit challenger is trained on historical realized profit and can learn historical servicing, prepayment, and selection artifacts; treat it as an empirical challenger, not causal underwriting proof.
+- Accepted-loan training and evaluation use resolved repayment outcomes only.
+- Rejected-style scoring is review-only unless a row actually has repayment outcomes.
+- The repo keeps the current accepted-loan pipeline intact while adding the new horizon, reporting, and diagnostic paths behind config and metadata.

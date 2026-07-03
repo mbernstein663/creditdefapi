@@ -65,7 +65,7 @@ def _repo_fingerprint(fingerprint):
 
 
 def _paths(output_path, sample):
-    report_dir = REPORT_DIR / "smoke" if sample else REPORT_DIR
+    report_dir = REPORT_DIR / "validation" / "smoke" if sample else REPORT_DIR / "validation"
     output = (
         DEFAULT_REJECTED_STYLE_BUNDLE.with_name("rejected_style_model_smoke.joblib")
         if sample
@@ -137,6 +137,10 @@ def train_rejected_style_model(
             "lgd": 1.0,
             "required_return": None,
             "approval_rule": "review only; expected profit is scenario math when profit inputs are supplied",
+            "use_npv": False,
+            "annual_discount_rate": 0.08,
+            "servicing_cost_rate": 0.0,
+            "recovery_rate": 0.25,
         },
         required_input_schema={
             "risk_features": list(REJECTED_STYLE_RISK_FEATURES),
@@ -144,6 +148,7 @@ def train_rejected_style_model(
         },
         metadata={
             "target": TARGET,
+            "target_mode": "resolved_default",
             "target_definition": "resolved funded accepted-loan default target projected onto limited fields",
             "target_limitation": "not true rejected-applicant default risk; rejected applications have no repayment outcomes",
             "is_smoke_sample": bool(sample),
@@ -156,10 +161,12 @@ def train_rejected_style_model(
             "accepted_to_rejected_feature_map": ACCEPTED_TO_REJECTED_FEATURE_MAP,
             "excluded_rejected_decision_fields": ["policy_code"],
             "forbidden_feature_columns": sorted(FORBIDDEN_FEATURE_COLUMNS),
+            "product_mode": "pre_underwriting_applicant",
             "random_state": 42,
             "package_versions": versions,
             "rejected_data_handling": "rejected applications are unlabeled and excluded",
             "output_limits": "limited-field risk estimate; review only for rejected-application-style inputs",
+            "calibration_method": "isotonic",
             "training_timestamp": training_timestamp,
         },
     )

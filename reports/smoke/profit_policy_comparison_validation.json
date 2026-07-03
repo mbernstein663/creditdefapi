@@ -1,0 +1,37 @@
+{
+  "note": "validation comparison only; no test-set selection",
+  "direct_profit": {
+    "policy": {
+      "type": "threshold",
+      "threshold": 0.0,
+      "selection_rule": "max validation total_realized_profit; tie-break profit_per_dollar_funded"
+    },
+    "approval_count": 1981,
+    "selection_rate": 0.7452972159518435,
+    "total_realized_profit": 1588334.9893223061,
+    "mean_realized_profit": 801.7844469067674,
+    "median_realized_profit": 1142.1669955790003,
+    "total_funded_amount": 26941175.0,
+    "profit_per_dollar_funded": 0.0589556687606352,
+    "average_predicted_profit": 661.4053677596937,
+    "predicted_actual_correlation": 0.18391415266807762,
+    "realized_default_rate": 0.12317011610297829
+  },
+  "default_risk": {
+    "available": true,
+    "bundle": "C:\\Users\\micro\\Documents\\Projects\\APICreditTrial3\\artifacts\\accepted_model.joblib",
+    "metrics": {
+      "expected_profit": 661823.792041701,
+      "expected_return": 0.04589250127272577,
+      "approval_count": 1017,
+      "selection_rate": 0.38261851015801357,
+      "mean_expected_profit": 650.7608574647994,
+      "mean_expected_return": 0.042391667830015606,
+      "lgd": 1.0,
+      "required_return": 0.0,
+      "actual_default_rate": 0.09832841691248771,
+      "total_realized_profit": 823556.1216747509,
+      "mean_realized_profit": 809.7896968286636
+    }
+  }
+}

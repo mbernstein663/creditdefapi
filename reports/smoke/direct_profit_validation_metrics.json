@@ -1,0 +1,747 @@
+{
+  "is_smoke_sample": true,
+  "sample_rows_requested": 20000,
+  "artifact_path": "C:\\Users\\micro\\Documents\\Projects\\APICreditTrial3\\artifacts\\direct_profit_model_smoke.joblib",
+  "training_timestamp": "2026-07-02T15:36:33.790384+00:00",
+  "package_versions": {
+    "fastapi": "0.138.1",
+    "pandas": "2.2.3",
+    "numpy": "1.26.4",
+    "scikit-learn": "1.4.2",
+    "matplotlib": "3.8.4",
+    "joblib": "1.3.2"
+  },
+  "source_fingerprint": {
+    "path": "C:\\Users\\micro\\Documents\\Projects\\APICreditTrial3\\accepted_2007_to_2018Q4.csv",
+    "size_bytes": 1675133810,
+    "sha256": "3eae03c28fd9d2e8a076ebeb73507e8d4d0f44d90500decdb0936e0933d1f36a"
+  },
+  "resolved_row_count": 17725,
+  "split_manifest": {
+    "row_counts": {
+      "train": 10635,
+      "calibration": 2658,
+      "validation": 2658,
+      "test": 1774
+    },
+    "date_ranges": {
+      "train": {
+        "min": "2015-12-01T00:00:00",
+        "max": "2015-12-01T00:00:00"
+      },
+      "calibration": {
+        "min": "2015-12-01T00:00:00",
+        "max": "2015-12-01T00:00:00"
+      },
+      "validation": {
+        "min": "2015-12-01T00:00:00",
+        "max": "2015-12-01T00:00:00"
+      },
+      "test": {
+        "min": "2015-12-01T00:00:00",
+        "max": "2015-12-01T00:00:00"
+      }
+    }
+  },
+  "split_summary": [
+    {
+      "split": "train",
+      "rows": 10635,
+      "default_rate": 0.2069581570286789,
+      "date_min": "2015-12-01T00:00:00",
+      "date_max": "2015-12-01T00:00:00"
+    },
+    {
+      "split": "calibration",
+      "rows": 2658,
+      "default_rate": 0.2057938299473288,
+      "date_min": "2015-12-01T00:00:00",
+      "date_max": "2015-12-01T00:00:00"
+    },
+    {
+      "split": "validation",
+      "rows": 2658,
+      "default_rate": 0.1945071482317532,
+      "date_min": "2015-12-01T00:00:00",
+      "date_max": "2015-12-01T00:00:00"
+    },
+    {
+      "split": "test",
+      "rows": 1774,
+      "default_rate": 0.17249154453213078,
+      "date_min": "2015-12-01T00:00:00",
+      "date_max": "2015-12-01T00:00:00"
+    }
+  ],
+  "feature_columns": [
+    "loan_amnt",
+    "int_rate",
+    "annual_inc",
+    "dti",
+    "fico_range_low",
+    "fico_range_high",
+    "delinq_2yrs",
+    "inq_last_6mths",
+    "open_acc",
+    "pub_rec",
+    "revol_bal",
+    "revol_util",
+    "total_acc",
+    "mort_acc",
+    "acc_open_past_24mths",
+    "pub_rec_bankruptcies",
+    "grade",
+    "sub_grade",
+    "emp_length",
+    "home_ownership",
+    "verification_status",
+    "purpose",
+    "addr_state",
+    "application_type",
+    "initial_list_status"
+  ],
+  "target": "realized_profit",
+  "selected_candidate": "random_forest",
+  "selected_policy": {
+    "type": "threshold",
+    "threshold": 0.0,
+    "selection_rule": "max validation total_realized_profit; tie-break profit_per_dollar_funded"
+  },
+  "selected_validation_metrics": {
+    "policy": {
+      "type": "threshold",
+      "threshold": 0.0,
+      "selection_rule": "max validation total_realized_profit; tie-break profit_per_dollar_funded"
+    },
+    "approval_count": 1981,
+    "selection_rate": 0.7452972159518435,
+    "total_realized_profit": 1588334.9893223061,
+    "mean_realized_profit": 801.7844469067674,
+    "median_realized_profit": 1142.1669955790003,
+    "total_funded_amount": 26941175.0,
+    "profit_per_dollar_funded": 0.0589556687606352,
+    "average_predicted_profit": 661.4053677596937,
+    "predicted_actual_correlation": 0.18391415266807762,
+    "realized_default_rate": 0.12317011610297829
+  },
+  "candidates": [
+    {
+      "name": "ridge",
+      "policy": {
+        "type": "top_percent",
+        "top_percent": 0.75
+      },
+      "regression": {
+        "rmse": 4857.133354840597,
+        "mae": 2958.3583136535003,
+        "predicted_actual_correlation": 0.17559789263309356
+      },
+      "selected_policy_metrics": {
+        "policy": {
+          "type": "top_percent",
+          "top_percent": 0.75
+        },
+        "approval_count": 1994,
+        "selection_rate": 0.7501881113619263,
+        "total_realized_profit": 1520993.4239074225,
+        "mean_realized_profit": 762.7850671551768,
+        "median_realized_profit": 1142.1609539694,
+        "total_funded_amount": 27817575.0,
+        "profit_per_dollar_funded": 0.05467742691113163,
+        "average_predicted_profit": 687.0019390143848,
+        "predicted_actual_correlation": 0.17559789263309356,
+        "realized_default_rate": 0.13390170511534605
+      },
+      "policy_candidates": [
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 0.0
+          },
+          "approval_count": 1812,
+          "selection_rate": 0.6817155756207675,
+          "total_realized_profit": 1440984.4442946902,
+          "mean_realized_profit": 795.2452783083279,
+          "median_realized_profit": 1136.2748492646997,
+          "total_funded_amount": 25349825.0,
+          "profit_per_dollar_funded": 0.056843960236202425,
+          "average_predicted_profit": 766.4498425282061,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.12306843267108168
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": -1279.9399758981076
+          },
+          "approval_count": 2392,
+          "selection_rate": 0.8999247554552295,
+          "total_realized_profit": 1235776.3890090615,
+          "mean_realized_profit": 516.6289251710124,
+          "median_realized_profit": 1109.8600002255007,
+          "total_funded_amount": 33659025.0,
+          "profit_per_dollar_funded": 0.036714562855253874,
+          "average_predicted_profit": 466.46294592583166,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.16596989966555184
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": -226.52121331678387
+          },
+          "approval_count": 1993,
+          "selection_rate": 0.7498118886380737,
+          "total_realized_profit": 1520819.1039074224,
+          "mean_realized_profit": 763.0803331196299,
+          "median_realized_profit": 1142.1669955790003,
+          "total_funded_amount": 27812575.0,
+          "profit_per_dollar_funded": 0.054680988865914874,
+          "average_predicted_profit": 687.4603630189457,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.13396889111891622
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 389.819854628712
+          },
+          "approval_count": 1329,
+          "selection_rate": 0.5,
+          "total_realized_profit": 1261984.5645448542,
+          "mean_realized_profit": 949.5745406658045,
+          "median_realized_profit": 1125.4908642031996,
+          "total_funded_amount": 18807225.0,
+          "profit_per_dollar_funded": 0.06710105103463453,
+          "average_predicted_profit": 969.5806557400658,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.10233258088788563
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 886.4272002296445
+          },
+          "approval_count": 665,
+          "selection_rate": 0.25018811136192626,
+          "total_realized_profit": 714816.9847781502,
+          "mean_realized_profit": 1074.9127590648875,
+          "median_realized_profit": 1152.8375943929996,
+          "total_funded_amount": 9470075.0,
+          "profit_per_dollar_funded": 0.07548166036469091,
+          "average_predicted_profit": 1304.0909293587904,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.07669172932330827
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 1299.8582186028532
+          },
+          "approval_count": 266,
+          "selection_rate": 0.1000752445447705,
+          "total_realized_profit": 271452.45104962355,
+          "mean_realized_profit": 1020.4979362767803,
+          "median_realized_profit": 1187.2206484853004,
+          "total_funded_amount": 3925200.0,
+          "profit_per_dollar_funded": 0.06915633625028623,
+          "average_predicted_profit": 1644.3818067735156,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.06766917293233082
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.1
+          },
+          "approval_count": 266,
+          "selection_rate": 0.1000752445447705,
+          "total_realized_profit": 271452.45104962355,
+          "mean_realized_profit": 1020.4979362767803,
+          "median_realized_profit": 1187.2206484853004,
+          "total_funded_amount": 3925200.0,
+          "profit_per_dollar_funded": 0.06915633625028623,
+          "average_predicted_profit": 1644.3818067735156,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.06766917293233082
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.25
+          },
+          "approval_count": 665,
+          "selection_rate": 0.25018811136192626,
+          "total_realized_profit": 714816.9847781502,
+          "mean_realized_profit": 1074.9127590648875,
+          "median_realized_profit": 1152.8375943929996,
+          "total_funded_amount": 9470075.0,
+          "profit_per_dollar_funded": 0.07548166036469091,
+          "average_predicted_profit": 1304.0909293587904,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.07669172932330827
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.5
+          },
+          "approval_count": 1329,
+          "selection_rate": 0.5,
+          "total_realized_profit": 1261984.5645448542,
+          "mean_realized_profit": 949.5745406658045,
+          "median_realized_profit": 1125.4908642031996,
+          "total_funded_amount": 18807225.0,
+          "profit_per_dollar_funded": 0.06710105103463453,
+          "average_predicted_profit": 969.5806557400658,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.10233258088788563
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.75
+          },
+          "approval_count": 1994,
+          "selection_rate": 0.7501881113619263,
+          "total_realized_profit": 1520993.4239074225,
+          "mean_realized_profit": 762.7850671551768,
+          "median_realized_profit": 1142.1609539694,
+          "total_funded_amount": 27817575.0,
+          "profit_per_dollar_funded": 0.05467742691113163,
+          "average_predicted_profit": 687.0019390143848,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.13390170511534605
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 1.0
+          },
+          "approval_count": 2658,
+          "selection_rate": 1.0,
+          "total_realized_profit": 820499.1857990077,
+          "mean_realized_profit": 308.6904386000781,
+          "median_realized_profit": 1098.40413907345,
+          "total_funded_amount": 38243300.0,
+          "profit_per_dollar_funded": 0.021454717187036884,
+          "average_predicted_profit": 204.82373713476474,
+          "predicted_actual_correlation": 0.17559789263309356,
+          "realized_default_rate": 0.1945071482317532
+        }
+      ]
+    },
+    {
+      "name": "random_forest",
+      "policy": {
+        "type": "threshold",
+        "threshold": 0.0
+      },
+      "regression": {
+        "rmse": 4850.842442964297,
+        "mae": 2842.7974305749117,
+        "predicted_actual_correlation": 0.18391415266807762
+      },
+      "selected_policy_metrics": {
+        "policy": {
+          "type": "threshold",
+          "threshold": 0.0
+        },
+        "approval_count": 1981,
+        "selection_rate": 0.7452972159518435,
+        "total_realized_profit": 1588334.9893223061,
+        "mean_realized_profit": 801.7844469067674,
+        "median_realized_profit": 1142.1669955790003,
+        "total_funded_amount": 26941175.0,
+        "profit_per_dollar_funded": 0.0589556687606352,
+        "average_predicted_profit": 661.4053677596938,
+        "predicted_actual_correlation": 0.18391415266807762,
+        "realized_default_rate": 0.12317011610297829
+      },
+      "policy_candidates": [
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 0.0
+          },
+          "approval_count": 1981,
+          "selection_rate": 0.7452972159518435,
+          "total_realized_profit": 1588334.9893223061,
+          "mean_realized_profit": 801.7844469067674,
+          "median_realized_profit": 1142.1669955790003,
+          "total_funded_amount": 26941175.0,
+          "profit_per_dollar_funded": 0.0589556687606352,
+          "average_predicted_profit": 661.4053677596938,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.12317011610297829
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": -1277.5426233970634
+          },
+          "approval_count": 2392,
+          "selection_rate": 0.8999247554552295,
+          "total_realized_profit": 1318282.9418335732,
+          "mean_realized_profit": 551.1216312013265,
+          "median_realized_profit": 1095.6267270019994,
+          "total_funded_amount": 32211825.0,
+          "profit_per_dollar_funded": 0.040925434738130276,
+          "average_predicted_profit": 474.6036408597321,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.16429765886287626
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": -13.879338832908964
+          },
+          "approval_count": 1993,
+          "selection_rate": 0.7498118886380737,
+          "total_realized_profit": 1572776.2531177811,
+          "mean_realized_profit": 789.1501520912097,
+          "median_realized_profit": 1136.2908414251997,
+          "total_funded_amount": 27028825.0,
+          "profit_per_dollar_funded": 0.05818885035208823,
+          "average_predicted_profit": 657.3675789506258,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.12393376818866031
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 370.13677886099083
+          },
+          "approval_count": 1329,
+          "selection_rate": 0.5,
+          "total_realized_profit": 1158442.1742212507,
+          "mean_realized_profit": 871.6645404223106,
+          "median_realized_profit": 1385.7685579995996,
+          "total_funded_amount": 21371200.0,
+          "profit_per_dollar_funded": 0.054205761689622045,
+          "average_predicted_profit": 882.7978953686644,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.1181339352896915
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 726.1006060018063
+          },
+          "approval_count": 665,
+          "selection_rate": 0.25018811136192626,
+          "total_realized_profit": 754845.9811777282,
+          "mean_realized_profit": 1135.1067386131251,
+          "median_realized_profit": 1972.2345855981002,
+          "total_funded_amount": 13748650.0,
+          "profit_per_dollar_funded": 0.054903280044057284,
+          "average_predicted_profit": 1227.556431213381,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.11729323308270677
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 1160.3929556162507
+          },
+          "approval_count": 266,
+          "selection_rate": 0.1000752445447705,
+          "total_realized_profit": 403611.2865377342,
+          "mean_realized_profit": 1517.3356636756926,
+          "median_realized_profit": 2705.7757434919986,
+          "total_funded_amount": 7227325.0,
+          "profit_per_dollar_funded": 0.055845182904841584,
+          "average_predicted_profit": 1713.2181381764126,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.11278195488721804
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.1
+          },
+          "approval_count": 266,
+          "selection_rate": 0.1000752445447705,
+          "total_realized_profit": 403611.2865377342,
+          "mean_realized_profit": 1517.3356636756926,
+          "median_realized_profit": 2705.7757434919986,
+          "total_funded_amount": 7227325.0,
+          "profit_per_dollar_funded": 0.055845182904841584,
+          "average_predicted_profit": 1713.2181381764126,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.11278195488721804
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.25
+          },
+          "approval_count": 665,
+          "selection_rate": 0.25018811136192626,
+          "total_realized_profit": 754845.9811777282,
+          "mean_realized_profit": 1135.1067386131251,
+          "median_realized_profit": 1972.2345855981002,
+          "total_funded_amount": 13748650.0,
+          "profit_per_dollar_funded": 0.054903280044057284,
+          "average_predicted_profit": 1227.556431213381,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.11729323308270677
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.5
+          },
+          "approval_count": 1329,
+          "selection_rate": 0.5,
+          "total_realized_profit": 1158442.1742212507,
+          "mean_realized_profit": 871.6645404223106,
+          "median_realized_profit": 1385.7685579995996,
+          "total_funded_amount": 21371200.0,
+          "profit_per_dollar_funded": 0.054205761689622045,
+          "average_predicted_profit": 882.7978953686644,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.1181339352896915
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.75
+          },
+          "approval_count": 1994,
+          "selection_rate": 0.7501881113619263,
+          "total_realized_profit": 1573108.3173775454,
+          "mean_realized_profit": 788.9209214531321,
+          "median_realized_profit": 1136.2748492646997,
+          "total_funded_amount": 27032425.0,
+          "profit_per_dollar_funded": 0.058193385069136246,
+          "average_predicted_profit": 657.0308645903115,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.1238716148445336
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 1.0
+          },
+          "approval_count": 2658,
+          "selection_rate": 1.0,
+          "total_realized_profit": 820499.1857990077,
+          "mean_realized_profit": 308.6904386000781,
+          "median_realized_profit": 1098.40413907345,
+          "total_funded_amount": 38243300.0,
+          "profit_per_dollar_funded": 0.021454717187036884,
+          "average_predicted_profit": 179.62072543045937,
+          "predicted_actual_correlation": 0.18391415266807762,
+          "realized_default_rate": 0.1945071482317532
+        }
+      ]
+    },
+    {
+      "name": "hist_gradient_boosting",
+      "policy": {
+        "type": "threshold",
+        "threshold": 0.0
+      },
+      "regression": {
+        "rmse": 4926.777835675598,
+        "mae": 2844.608368647107,
+        "predicted_actual_correlation": 0.1303925104910505
+      },
+      "selected_policy_metrics": {
+        "policy": {
+          "type": "threshold",
+          "threshold": 0.0
+        },
+        "approval_count": 2090,
+        "selection_rate": 0.7863054928517682,
+        "total_realized_profit": 1347956.662636632,
+        "mean_realized_profit": 644.9553409744651,
+        "median_realized_profit": 1113.697940303201,
+        "total_funded_amount": 28475425.0,
+        "profit_per_dollar_funded": 0.047337543254811196,
+        "average_predicted_profit": 684.282534471029,
+        "predicted_actual_correlation": 0.1303925104910505,
+        "realized_default_rate": 0.13923444976076554
+      },
+      "policy_candidates": [
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 0.0
+          },
+          "approval_count": 2090,
+          "selection_rate": 0.7863054928517682,
+          "total_realized_profit": 1347956.662636632,
+          "mean_realized_profit": 644.9553409744651,
+          "median_realized_profit": 1113.697940303201,
+          "total_funded_amount": 28475425.0,
+          "profit_per_dollar_funded": 0.047337543254811196,
+          "average_predicted_profit": 684.282534471029,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.13923444976076554
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": -838.7043499316517
+          },
+          "approval_count": 2392,
+          "selection_rate": 0.8999247554552295,
+          "total_realized_profit": 1178940.296444621,
+          "mean_realized_profit": 492.86801690828634,
+          "median_realized_profit": 1096.2258042323997,
+          "total_funded_amount": 32419100.0,
+          "profit_per_dollar_funded": 0.03636560843591034,
+          "average_predicted_profit": 557.7909481966606,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.16596989966555184
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 112.11475905042431
+          },
+          "approval_count": 1993,
+          "selection_rate": 0.7498118886380737,
+          "total_realized_profit": 1331625.0823497563,
+          "mean_realized_profit": 668.1510699195967,
+          "median_realized_profit": 1117.4531971568003,
+          "total_funded_amount": 27349600.0,
+          "profit_per_dollar_funded": 0.04868901491611417,
+          "average_predicted_profit": 715.1874927828662,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.13246362267937783
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 499.3157623912499
+          },
+          "approval_count": 1329,
+          "selection_rate": 0.5,
+          "total_realized_profit": 970148.7857758796,
+          "mean_realized_profit": 729.9840374536341,
+          "median_realized_profit": 1260.5939737789995,
+          "total_funded_amount": 20888625.0,
+          "profit_per_dollar_funded": 0.04644387966062293,
+          "average_predicted_profit": 901.4972147269149,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.12114371708051166
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 706.3409332158066
+          },
+          "approval_count": 662,
+          "selection_rate": 0.24905944319036868,
+          "total_realized_profit": 667604.035272574,
+          "mean_realized_profit": 1008.465310079417,
+          "median_realized_profit": 2030.2772229578004,
+          "total_funded_amount": 13954525.0,
+          "profit_per_dollar_funded": 0.04784140164373736,
+          "average_predicted_profit": 1211.2296555065216,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.11933534743202417
+        },
+        {
+          "policy": {
+            "type": "threshold",
+            "threshold": 1057.933008346493
+          },
+          "approval_count": 266,
+          "selection_rate": 0.1000752445447705,
+          "total_realized_profit": 360907.5422526086,
+          "mean_realized_profit": 1356.795271626348,
+          "median_realized_profit": 2763.0810023378017,
+          "total_funded_amount": 7258775.0,
+          "profit_per_dollar_funded": 0.04972017210240138,
+          "average_predicted_profit": 1745.2296404211447,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.12781954887218044
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.1
+          },
+          "approval_count": 266,
+          "selection_rate": 0.1000752445447705,
+          "total_realized_profit": 360907.5422526086,
+          "mean_realized_profit": 1356.795271626348,
+          "median_realized_profit": 2763.0810023378017,
+          "total_funded_amount": 7258775.0,
+          "profit_per_dollar_funded": 0.04972017210240138,
+          "average_predicted_profit": 1745.2296404211447,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.12781954887218044
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.25
+          },
+          "approval_count": 665,
+          "selection_rate": 0.25018811136192626,
+          "total_realized_profit": 670345.9587980142,
+          "mean_realized_profit": 1008.0390357864875,
+          "median_realized_profit": 2014.0141659303008,
+          "total_funded_amount": 13985525.0,
+          "profit_per_dollar_funded": 0.047931411856045034,
+          "average_predicted_profit": 1208.9519620225033,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.11879699248120301
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.5
+          },
+          "approval_count": 1329,
+          "selection_rate": 0.5,
+          "total_realized_profit": 970148.7857758796,
+          "mean_realized_profit": 729.9840374536341,
+          "median_realized_profit": 1260.5939737789995,
+          "total_funded_amount": 20888625.0,
+          "profit_per_dollar_funded": 0.04644387966062293,
+          "average_predicted_profit": 901.4972147269149,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.12114371708051166
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 0.75
+          },
+          "approval_count": 1994,
+          "selection_rate": 0.7501881113619263,
+          "total_realized_profit": 1329772.8023497565,
+          "mean_realized_profit": 666.8870623619641,
+          "median_realized_profit": 1116.3745386561,
+          "total_funded_amount": 27379600.0,
+          "profit_per_dollar_funded": 0.04856801422773731,
+          "average_predicted_profit": 714.8850402059678,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.1328986960882648
+        },
+        {
+          "policy": {
+            "type": "top_percent",
+            "top_percent": 1.0
+          },
+          "approval_count": 2658,
+          "selection_rate": 1.0,
+          "total_realized_profit": 820499.1857990077,
+          "mean_realized_profit": 308.6904386000781,
+          "median_realized_profit": 1098.40413907345,
+          "total_funded_amount": 38243300.0,
+          "profit_per_dollar_funded": 0.021454717187036884,
+          "average_predicted_profit": 231.67034440607432,
+          "predicted_actual_correlation": 0.1303925104910505,
+          "realized_default_rate": 0.1945071482317532
+        }
+      ]
+    }
+  ]
+}

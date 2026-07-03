@@ -1,0 +1,10 @@
+metric,estimate,lower,upper,bootstrap_samples,random_state
+roc_auc,,,,200,42
+pr_auc,,,,200,42
+brier_score,0.8100000000000003,0.81,0.81,200,42
+expected_profit,296.0,296.0,296.0,200,42
+expected_return,0.29599999999999993,0.296,0.296,200,42
+approval_rate,1.0,1.0,1.0,200,42
+actual_default_rate_approved,1.0,1.0,1.0,200,42
+total_realized_profit,-800.0,-800.0,-800.0,200,42
+mean_realized_profit,-800.0,-800.0,-800.0,200,42

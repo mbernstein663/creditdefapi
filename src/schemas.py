@@ -58,7 +58,10 @@ class ScoreResponse(BaseModel):
     reason: str
     expected_profit: Optional[float] = None
     expected_return: Optional[float] = None
+    expected_npv_profit: Optional[float] = None
+    annualized_return: Optional[float] = None
     lgd: Optional[float] = None
+    good_profit_haircut: Optional[float] = None
     required_return: Optional[float] = None
     approval_rule: Optional[str] = None
     model_note: Optional[str] = None

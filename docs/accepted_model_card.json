@@ -33,11 +33,22 @@
   ],
   "policy": {
     "lgd": 1.0,
+    "good_profit_haircut": 0.65,
     "required_return": 0.0,
-    "approval_rule": "expected_return >= required_return"
+    "approval_rule": "expected_return > required_return",
+    "use_npv": false,
+    "annual_discount_rate": 0.08,
+    "servicing_cost_rate": 0.0,
+    "recovery_rate": 0.25,
+    "selection_rule": "max validation total_realized_profit among non-empty policies with non-negative scenario expected_profit, non-negative expected_return, non-negative required_return, and positive realized validation profit; tie-break expected_profit, approved default rate, approval count",
+    "validation_expected_profit": 11992821.745081656,
+    "validation_realized_profit": 7319090.4389496995,
+    "validation_approval_count": 28833,
+    "validation_selection_rate": 0.15347804794958056,
+    "validation_approved_default_rate": 0.09124960982207887
   },
-  "selected_candidate": "logistic_balanced",
-  "selection_rule": "max validation expected_profit at required_return=0.0; tie-breaker lower validation brier_score",
+  "selected_candidate": "hist_gradient_boosting",
+  "selection_rule": "select calibrated model, good_profit_haircut, and required_return on validation total_realized_profit after non-negative scenario-EV gates; tie-break expected_profit and brier_score",
   "split_summary": [
     {
       "split": "train",
@@ -73,7 +84,7 @@
     "size_bytes": 1675133810,
     "sha256": "3eae03c28fd9d2e8a076ebeb73507e8d4d0f44d90500decdb0936e0933d1f36a"
   },
-  "training_timestamp": "2026-07-02T15:03:33.451515+00:00",
+  "training_timestamp": "2026-07-03T19:01:23.638525+00:00",
   "package_versions": {
     "fastapi": "0.138.1",
     "pandas": "2.2.3",

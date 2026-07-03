@@ -3,7 +3,9 @@ import pytest
 
 from src.config import (
     ACCEPTED_RISK_FEATURES,
+    DEFAULT_TARGET_HORIZON_MONTHS,
     PROFIT_INPUT_COLUMNS,
+    PRODUCT_MODE_PRE_UNDERWRITING,
     REJECTED_STYLE_RISK_FEATURES,
     TARGET,
 )
@@ -16,6 +18,7 @@ from src.preprocessing import (
     split_chronological,
     split_count_report,
     split_manifest,
+    feature_columns_for_product_mode,
 )
 
 
@@ -38,6 +41,34 @@ def test_target_construction_maps_resolved_and_drops_unresolved():
     out = construct_target(df)
 
     assert out[TARGET].tolist() == [0, 0, 1, 1, 1]
+
+
+def test_fixed_horizon_target_labels_only_conservative_observed_rows():
+    df = pd.DataFrame(
+        {
+            "loan_status": [
+                "Fully Paid",
+                "Charged Off",
+                "Fully Paid",
+                "Charged Off",
+                "Current",
+            ],
+            "issue_d": ["Jan-2018"] * 5,
+            "last_pymnt_d": ["Feb-2021", "Mar-2019", "Dec-2018", "Jan-2022", "Jan-2019"],
+        }
+    )
+
+    out, summary = construct_target(
+        df,
+        mode="default_within_horizon",
+        target_config={"horizon_months": DEFAULT_TARGET_HORIZON_MONTHS},
+        return_summary=True,
+    )
+
+    assert out[TARGET].tolist() == [0, 1]
+    assert summary["included_rows"] == 2
+    assert summary["excluded_rows"] == 3
+    assert summary["mode"] == "default_within_horizon"
 
 
 def test_unknown_status_is_not_silently_dropped():
@@ -64,6 +95,16 @@ def test_leakage_and_profit_inputs_are_not_risk_features():
 
     with pytest.raises(ValueError):
         ensure_no_forbidden_features(["loan_status"])
+
+
+def test_pre_underwriting_mode_excludes_pricing_fields():
+    features = feature_columns_for_product_mode(PRODUCT_MODE_PRE_UNDERWRITING)
+
+    assert "grade" not in features
+    assert "sub_grade" not in features
+    assert "int_rate" not in features
+    assert "initial_list_status" not in features
+    assert "loan_amnt" in features
 
 
 def test_accepted_to_rejected_feature_map_is_explicit():

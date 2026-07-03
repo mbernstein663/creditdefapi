@@ -15,7 +15,6 @@ from src.config import (
     REPORT_DIR,
 )
 from src.profit_challenger import (
-    default_risk_policy_metrics,
     predict_profit,
     prepare_profit_frame,
     profit_policy_metrics,
@@ -64,9 +63,8 @@ def evaluate_locked_profit_model(
     predicted = predict_profit(bundle, test_df)
     metrics = profit_policy_metrics(test_df, predicted, bundle.policy)
     comparison = {
-        "note": "locked test comparison; no model, threshold, or policy selection happens here",
+        "note": "locked test evaluation is single-policy only; comparison artifacts are omitted on test",
         "direct_profit": _small_metrics(metrics),
-        "default_risk": default_risk_policy_metrics(test_df, accepted_bundle_path),
     }
     result = {
         "model_type": bundle.model_type,
@@ -81,11 +79,12 @@ def evaluate_locked_profit_model(
         "note": "test set is evaluated after loading the locked direct-profit bundle",
     }
 
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
     is_smoke = bool(sample or bundle.metadata.get("is_smoke_sample"))
-    metrics_path = REPORT_DIR / ("direct_profit_locked_test_metrics_smoke.json" if is_smoke else "direct_profit_locked_test_metrics.json")
-    deciles_path = REPORT_DIR / ("direct_profit_locked_test_deciles_smoke.csv" if is_smoke else "direct_profit_locked_test_deciles.csv")
-    comparison_path = REPORT_DIR / (
+    report_dir = REPORT_DIR / "test" / "smoke" if is_smoke else REPORT_DIR / "test"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = report_dir / ("direct_profit_locked_test_metrics_smoke.json" if is_smoke else "direct_profit_locked_test_metrics.json")
+    deciles_path = report_dir / ("direct_profit_locked_test_deciles_smoke.csv" if is_smoke else "direct_profit_locked_test_deciles.csv")
+    comparison_path = report_dir / (
         "profit_policy_comparison_locked_test_smoke.json" if is_smoke else "profit_policy_comparison_locked_test.json"
     )
     metrics_path.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")

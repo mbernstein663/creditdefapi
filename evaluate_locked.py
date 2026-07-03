@@ -17,6 +17,7 @@ from src.calibration import subgroup_calibration_summary
 from src.evaluation import evaluate_probability, evaluate_profit_policy
 from src.models import predict_raw_default
 from src.preprocessing import prepare_accepted_loans
+from src.reporting import generate_report_suite
 
 
 def _read_accepted(path, feature_columns, sample=None):
@@ -64,8 +65,23 @@ def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED
         "test_default_rate": float(test_df[TARGET].mean()) if len(test_df) else None,
         "note": "test set is evaluated after loading the locked bundle; no selection happens here",
     }
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    path = REPORT_DIR / ("locked_test_metrics_smoke.json" if result["is_smoke_sample"] else "locked_test_metrics.json")
+    report_dir = REPORT_DIR / "test" / "smoke" if result["is_smoke_sample"] else REPORT_DIR / "test"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    generate_report_suite(
+        bundle,
+        test_df,
+        p_default,
+        output_dir=report_dir,
+        stage="test",
+        include_sensitivity=False,
+        stage_summary={
+            "row_count": int(len(test_df)),
+            "split_summary": bundle.metadata.get("split_summary", []),
+            "test_default_rate": result["test_default_rate"],
+            "locked_test": True,
+        },
+    )
+    path = report_dir / ("locked_test_metrics_smoke.json" if result["is_smoke_sample"] else "locked_test_metrics.json")
     path.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
     return path
 

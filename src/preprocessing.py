@@ -7,14 +7,22 @@ import pandas as pd
 
 from .config import (
     ACCEPTED_TO_REJECTED_FEATURE_MAP,
+    ACCEPTED_CATEGORICAL_RISK_FEATURES,
     ACCEPTED_NUMERIC_RISK_FEATURES,
     BAD_STATUSES,
     FORBIDDEN_FEATURE_COLUMNS,
     GOOD_STATUSES,
+    DEFAULT_TARGET_DATE_COLUMNS,
+    DEFAULT_TARGET_HORIZON_MONTHS,
+    DEFAULT_TARGET_MODE,
+    PRE_UNDERWRITING_FORBIDDEN_FIELDS,
     PROFIT_INPUT_COLUMNS,
+    PRODUCT_MODE_POST_PRICING,
+    PRODUCT_MODE_PRE_UNDERWRITING,
     REJECTED_STYLE_NUMERIC_RISK_FEATURES,
     REJECTED_RAW_ALIASES,
     TARGET,
+    TARGET_MODES,
     UNRESOLVED_STATUSES,
 )
 
@@ -34,30 +42,124 @@ def parse_term_months(value):
     return int(match.group(0)) if match else pd.NA
 
 
-def construct_target(df: pd.DataFrame) -> pd.DataFrame:
-    if "loan_status" not in df.columns:
-        raise ValueError("accepted loan data must include loan_status")
+def parse_date(value):
+    if pd.isna(value):
+        return pd.NaT
+    return pd.to_datetime(value, format="%b-%Y", errors="coerce")
 
+
+def _target_summary(mode: str, included: int, excluded: int, total: int, extra: dict | None = None) -> dict:
+    summary = {
+        "mode": mode,
+        "included_rows": int(included),
+        "excluded_rows": int(excluded),
+        "total_rows": int(total),
+        "included_rate": float(included / total) if total else 0.0,
+    }
+    if extra:
+        summary.update(extra)
+    return summary
+
+
+def _default_within_horizon_target(df: pd.DataFrame, horizon_months: int, issue_date_column: str, last_payment_date_column: str, loan_status_column: str) -> tuple[pd.DataFrame, dict]:
+    required = [issue_date_column, last_payment_date_column, loan_status_column]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"missing horizon target columns: {', '.join(missing)}")
     out = df.copy()
-    status = out["loan_status"].fillna("").astype(str).str.strip()
+    issue_dt = out[issue_date_column].map(parse_date)
+    last_payment_dt = out[last_payment_date_column].map(parse_date)
+    status = out[loan_status_column].fillna("").astype(str).str.strip()
     known = GOOD_STATUSES | BAD_STATUSES | UNRESOLVED_STATUSES
     unknown = sorted(set(status.unique()) - known)
     if unknown:
         raise ValueError(f"unknown loan_status values: {unknown}")
-    resolved = status.isin(GOOD_STATUSES | BAD_STATUSES)
-    out = out.loc[resolved].copy()
-    status = status.loc[resolved]
-    out[TARGET] = status.isin(BAD_STATUSES).astype(int)
+    horizon = pd.to_timedelta(int(horizon_months) * 30, unit="D")
+    cutoff = issue_dt + horizon
+    observed = last_payment_dt.notna()
+    enough_observation = observed & last_payment_dt.ge(cutoff)
+    bad = status.isin(BAD_STATUSES) & observed & last_payment_dt.le(cutoff)
+    good = status.isin(GOOD_STATUSES) & enough_observation
+    included = bad | good
+    out = out.loc[included].copy()
+    out[TARGET] = bad.loc[included].astype(int)
+    summary = _target_summary(
+        "default_within_horizon",
+        len(out),
+        len(df) - len(out),
+        len(df),
+        {
+            "horizon_months": int(horizon_months),
+            "issue_date_column": issue_date_column,
+            "last_payment_date_column": last_payment_date_column,
+            "loan_status_column": loan_status_column,
+            "bad_label_count": int(bad.sum()),
+            "good_label_count": int(good.sum()),
+        },
+    )
+    return out, summary
+
+
+def construct_target(
+    df: pd.DataFrame,
+    mode: str = DEFAULT_TARGET_MODE,
+    target_config: dict | None = None,
+    return_summary: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
+    config = {
+        **DEFAULT_TARGET_DATE_COLUMNS,
+        "horizon_months": DEFAULT_TARGET_HORIZON_MONTHS,
+    }
+    if target_config:
+        config.update(target_config)
+    if mode not in TARGET_MODES:
+        raise ValueError(f"unknown target mode: {mode}")
+    if mode == "resolved_default":
+        if "loan_status" not in df.columns:
+            raise ValueError("accepted loan data must include loan_status")
+
+        out = df.copy()
+        status = out["loan_status"].fillna("").astype(str).str.strip()
+        known = GOOD_STATUSES | BAD_STATUSES | UNRESOLVED_STATUSES
+        unknown = sorted(set(status.unique()) - known)
+        if unknown:
+            raise ValueError(f"unknown loan_status values: {unknown}")
+        resolved = status.isin(GOOD_STATUSES | BAD_STATUSES)
+        out = out.loc[resolved].copy()
+        status = status.loc[resolved]
+        out[TARGET] = status.isin(BAD_STATUSES).astype(int)
+        summary = _target_summary(mode, len(out), len(df) - len(out), len(df))
+    else:
+        out, summary = _default_within_horizon_target(
+            df,
+            horizon_months=int(config["horizon_months"]),
+            issue_date_column=config["issue_date_column"],
+            last_payment_date_column=config["last_payment_date_column"],
+            loan_status_column=config["loan_status_column"],
+        )
+    if return_summary:
+        return out, summary
+    out.attrs["target_summary"] = summary
     return out
 
 
-def prepare_accepted_loans(df: pd.DataFrame) -> pd.DataFrame:
-    out = construct_target(df)
+def prepare_accepted_loans(
+    df: pd.DataFrame,
+    target_mode: str = DEFAULT_TARGET_MODE,
+    target_config: dict | None = None,
+    return_summary: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
+    result = construct_target(df, mode=target_mode, target_config=target_config, return_summary=True)
+    out, summary = result
     if "term" in out.columns and "term_months" not in out.columns:
         out["term_months"] = out["term"].map(parse_term_months)
     if "issue_d" in out.columns:
-        out["issue_dt"] = pd.to_datetime(out["issue_d"], format="%b-%Y", errors="coerce")
+        out["issue_dt"] = out["issue_d"].map(parse_date)
         out["issue_year"] = out["issue_dt"].dt.year
+        out["issue_quarter"] = out["issue_dt"].dt.to_period("Q").astype(str)
+        out["issue_month"] = out["issue_dt"].dt.to_period("M").astype(str)
+    if "last_pymnt_d" in out.columns:
+        out["last_pymnt_dt"] = out["last_pymnt_d"].map(parse_date)
 
     numeric_columns = set(ACCEPTED_NUMERIC_RISK_FEATURES + PROFIT_INPUT_COLUMNS)
     for column in numeric_columns & set(out.columns):
@@ -65,11 +167,27 @@ def prepare_accepted_loans(df: pd.DataFrame) -> pd.DataFrame:
             out[column] = pd.to_numeric(out[column].map(parse_percent), errors="coerce")
         else:
             out[column] = pd.to_numeric(out[column], errors="coerce")
+    if return_summary:
+        return out, summary
+    out.attrs["target_summary"] = summary
     return out
 
 
-def ensure_no_forbidden_features(feature_columns: Iterable[str]) -> None:
-    forbidden = sorted(set(feature_columns) & FORBIDDEN_FEATURE_COLUMNS)
+def feature_columns_for_product_mode(product_mode: str = PRODUCT_MODE_POST_PRICING) -> list[str]:
+    base = ACCEPTED_NUMERIC_RISK_FEATURES + ACCEPTED_CATEGORICAL_RISK_FEATURES
+    if product_mode == PRODUCT_MODE_POST_PRICING:
+        return list(base)
+    if product_mode == PRODUCT_MODE_PRE_UNDERWRITING:
+        forbidden = set(PRE_UNDERWRITING_FORBIDDEN_FIELDS)
+        return [column for column in base if column not in forbidden]
+    raise ValueError(f"unknown product mode: {product_mode}")
+
+
+def ensure_no_forbidden_features(feature_columns: Iterable[str], product_mode: str = PRODUCT_MODE_POST_PRICING) -> None:
+    forbidden = set(FORBIDDEN_FEATURE_COLUMNS)
+    if product_mode == PRODUCT_MODE_PRE_UNDERWRITING:
+        forbidden |= set(PRE_UNDERWRITING_FORBIDDEN_FIELDS)
+    forbidden = sorted(set(feature_columns) & forbidden)
     if forbidden:
         raise ValueError(f"forbidden model features: {', '.join(forbidden)}")
 

@@ -51,7 +51,7 @@ def _write_json(path, payload):
 
 
 def _paths(output_path, sample):
-    report_dir = REPORT_DIR / "smoke" if sample else REPORT_DIR
+    report_dir = REPORT_DIR / "validation" / "smoke" if sample else REPORT_DIR / "validation"
     output = DEFAULT_PROFIT_BUNDLE.with_name("direct_profit_model_smoke.joblib") if sample else output_path
     return output, report_dir
 

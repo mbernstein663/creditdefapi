@@ -129,6 +129,15 @@ def test_scoring_uses_bundle_lgd_by_default():
     assert scored["approval_rule"] == "expected_profit > 0"
 
 
+def test_scoring_uses_bundle_good_profit_haircut():
+    bundle = accepted_bundle(policy={"lgd": 1.0, "required_return": None, "good_profit_haircut": 0.5})
+    scored = score_records([accepted_row()], bundle)[0]
+
+    assert scored["expected_profit"] == -10
+    assert scored["good_profit_haircut"] == 0.5
+    assert scored["decision"] == "deny"
+
+
 def test_invalid_profit_inputs_return_review_per_row():
     bundle = accepted_bundle()
     scored = score_records(
@@ -150,8 +159,8 @@ def test_required_return_policy_uses_expected_return_rule():
 
     scored = score_records([accepted_row()], bundle)[0]
 
-    assert scored["decision"] == "approve"
-    assert scored["approval_rule"] == "expected_return >= required_return"
+    assert scored["decision"] == "deny"
+    assert scored["approval_rule"] == "expected_return > required_return"
 
 
 def test_rejected_style_profit_inputs_remain_review_only():

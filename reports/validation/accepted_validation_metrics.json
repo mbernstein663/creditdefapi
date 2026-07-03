@@ -1,0 +1,1003 @@
+{
+  "is_smoke_sample": false,
+  "sample_rows_requested": null,
+  "artifact_path": "C:\\Users\\micro\\Documents\\Projects\\APICreditTrial3\\artifacts\\accepted_model.joblib",
+  "training_timestamp": "2026-07-03T19:01:23.638525+00:00",
+  "package_versions": {
+    "fastapi": "0.138.1",
+    "pandas": "2.2.3",
+    "numpy": "1.26.4",
+    "scikit-learn": "1.4.2",
+    "matplotlib": "3.8.4",
+    "joblib": "1.3.2"
+  },
+  "source_fingerprint": {
+    "path": "C:\\Users\\micro\\Documents\\Projects\\APICreditTrial3\\accepted_2007_to_2018Q4.csv",
+    "size_bytes": 1675133810,
+    "sha256": "3eae03c28fd9d2e8a076ebeb73507e8d4d0f44d90500decdb0936e0933d1f36a"
+  },
+  "resolved_row_count": 1348099,
+  "target_summary": {
+    "mode": "resolved_default",
+    "included_rows": 1348099,
+    "excluded_rows": 912602,
+    "total_rows": 2260701,
+    "included_rate": 0.5963190178621587
+  },
+  "split_manifest": {
+    "row_counts": {
+      "train": 829355,
+      "calibration": 196607,
+      "validation": 187864,
+      "test": 134273
+    },
+    "date_ranges": {
+      "train": {
+        "min": "2007-06-01T00:00:00",
+        "max": "2015-12-01T00:00:00"
+      },
+      "calibration": {
+        "min": "2016-01-01T00:00:00",
+        "max": "2016-07-01T00:00:00"
+      },
+      "validation": {
+        "min": "2016-08-01T00:00:00",
+        "max": "2017-06-01T00:00:00"
+      },
+      "test": {
+        "min": "2017-07-01T00:00:00",
+        "max": "2018-12-01T00:00:00"
+      }
+    }
+  },
+  "split_summary": [
+    {
+      "split": "train",
+      "rows": 829355,
+      "default_rate": 0.18455908507213437,
+      "date_min": "2007-06-01T00:00:00",
+      "date_max": "2015-12-01T00:00:00"
+    },
+    {
+      "split": "calibration",
+      "rows": 196607,
+      "default_rate": 0.22647718545117926,
+      "date_min": "2016-01-01T00:00:00",
+      "date_max": "2016-07-01T00:00:00"
+    },
+    {
+      "split": "validation",
+      "rows": 187864,
+      "default_rate": 0.2398916237278031,
+      "date_min": "2016-08-01T00:00:00",
+      "date_max": "2017-06-01T00:00:00"
+    },
+    {
+      "split": "test",
+      "rows": 134273,
+      "default_rate": 0.19885606190373345,
+      "date_min": "2017-07-01T00:00:00",
+      "date_max": "2018-12-01T00:00:00"
+    }
+  ],
+  "feature_columns": [
+    "loan_amnt",
+    "int_rate",
+    "annual_inc",
+    "dti",
+    "fico_range_low",
+    "fico_range_high",
+    "delinq_2yrs",
+    "inq_last_6mths",
+    "open_acc",
+    "pub_rec",
+    "revol_bal",
+    "revol_util",
+    "total_acc",
+    "mort_acc",
+    "acc_open_past_24mths",
+    "pub_rec_bankruptcies",
+    "grade",
+    "sub_grade",
+    "emp_length",
+    "home_ownership",
+    "verification_status",
+    "purpose",
+    "addr_state",
+    "application_type",
+    "initial_list_status"
+  ],
+  "selected_candidate": "hist_gradient_boosting",
+  "selection_rule": "select calibrated model, good_profit_haircut, and required_return on validation total_realized_profit after non-negative scenario-EV gates; tie-break expected_profit and brier_score",
+  "selected_policy": {
+    "lgd": 1.0,
+    "good_profit_haircut": 0.65,
+    "required_return": 0.0,
+    "approval_rule": "expected_return > required_return",
+    "use_npv": false,
+    "annual_discount_rate": 0.08,
+    "servicing_cost_rate": 0.0,
+    "recovery_rate": 0.25,
+    "selection_rule": "max validation total_realized_profit among non-empty policies with non-negative scenario expected_profit, non-negative expected_return, non-negative required_return, and positive realized validation profit; tie-break expected_profit, approved default rate, approval count",
+    "validation_expected_profit": 11992821.745081656,
+    "validation_realized_profit": 7319090.4389496995,
+    "validation_approval_count": 28833,
+    "validation_selection_rate": 0.15347804794958056,
+    "validation_approved_default_rate": 0.09124960982207887
+  },
+  "selected_subgroup_calibration": {
+    "term_months": [
+      {
+        "group": 36,
+        "count": 146384,
+        "mean_predicted_default": 0.20509035723304636,
+        "observed_default_rate": 0.2119903814624549,
+        "brier_score": 0.15458818230047783
+      },
+      {
+        "group": 60,
+        "count": 41480,
+        "mean_predicted_default": 0.33495647290570146,
+        "observed_default_rate": 0.3383558341369335,
+        "brier_score": 0.20692879855445565
+      }
+    ],
+    "grade": [
+      {
+        "group": "A",
+        "count": 24080,
+        "mean_predicted_default": 0.06446625212913809,
+        "observed_default_rate": 0.0712624584717608,
+        "brier_score": 0.06471798895126413
+      },
+      {
+        "group": "B",
+        "count": 55130,
+        "mean_predicted_default": 0.15258522061874388,
+        "observed_default_rate": 0.16325049882096862,
+        "brier_score": 0.13371472965119474
+      },
+      {
+        "group": "C",
+        "count": 63047,
+        "mean_predicted_default": 0.2534098553332389,
+        "observed_default_rate": 0.26270877282027694,
+        "brier_score": 0.18831308531160515
+      },
+      {
+        "group": "D",
+        "count": 28142,
+        "mean_predicted_default": 0.34193223343319645,
+        "observed_default_rate": 0.35210717077677495,
+        "brier_score": 0.22178272597418922
+      },
+      {
+        "group": "E",
+        "count": 11570,
+        "mean_predicted_default": 0.43872203320764963,
+        "observed_default_rate": 0.41970613656006917,
+        "brier_score": 0.23583013605362887
+      },
+      {
+        "group": "F",
+        "count": 4389,
+        "mean_predicted_default": 0.5521859481409624,
+        "observed_default_rate": 0.5092276144907724,
+        "brier_score": 0.2446367109249164
+      },
+      {
+        "group": "G",
+        "count": 1506,
+        "mean_predicted_default": 0.5661518408199493,
+        "observed_default_rate": 0.5232403718459495,
+        "brier_score": 0.24322115531129845
+      }
+    ],
+    "sub_grade": [
+      {
+        "group": "A1",
+        "count": 5382,
+        "mean_predicted_default": 0.03210955245472964,
+        "observed_default_rate": 0.035860274990709776,
+        "brier_score": 0.03403590367974945
+      },
+      {
+        "group": "A2",
+        "count": 4210,
+        "mean_predicted_default": 0.04904881995545852,
+        "observed_default_rate": 0.05771971496437055,
+        "brier_score": 0.05347655960604435
+      },
+      {
+        "group": "A3",
+        "count": 4012,
+        "mean_predicted_default": 0.060449520676737506,
+        "observed_default_rate": 0.07577268195413758,
+        "brier_score": 0.06946900104757375
+      },
+      {
+        "group": "A4",
+        "count": 4375,
+        "mean_predicted_default": 0.07835426642022864,
+        "observed_default_rate": 0.07611428571428572,
+        "brier_score": 0.06940664840241745
+      },
+      {
+        "group": "A5",
+        "count": 6101,
+        "mean_predicted_default": 0.0963308990988754,
+        "observed_default_rate": 0.10539255859695132,
+        "brier_score": 0.09305489353173903
+      },
+      {
+        "group": "B1",
+        "count": 10770,
+        "mean_predicted_default": 0.11557526679929,
+        "observed_default_rate": 0.12794800371402043,
+        "brier_score": 0.11017868890901383
+      },
+      {
+        "group": "B2",
+        "count": 8945,
+        "mean_predicted_default": 0.12953962925022727,
+        "observed_default_rate": 0.14432643935159306,
+        "brier_score": 0.12160094566436906
+      },
+      {
+        "group": "B3",
+        "count": 9485,
+        "mean_predicted_default": 0.1465159732105966,
+        "observed_default_rate": 0.1565629942013706,
+        "brier_score": 0.12964031454394156
+      },
+      {
+        "group": "B4",
+        "count": 11283,
+        "mean_predicted_default": 0.16782024848337374,
+        "observed_default_rate": 0.17566250110786139,
+        "brier_score": 0.1420685272627804
+      },
+      {
+        "group": "B5",
+        "count": 14647,
+        "mean_predicted_default": 0.18606716297530546,
+        "observed_default_rate": 0.19553492182699528,
+        "brier_score": 0.15462214314175385
+      },
+      {
+        "group": "C1",
+        "count": 14737,
+        "mean_predicted_default": 0.2098710979384914,
+        "observed_default_rate": 0.2274547058424374,
+        "brier_score": 0.17235991940335807
+      },
+      {
+        "group": "C2",
+        "count": 11916,
+        "mean_predicted_default": 0.2298457654241349,
+        "observed_default_rate": 0.24857334676065793,
+        "brier_score": 0.1814509827757628
+      },
+      {
+        "group": "C3",
+        "count": 11294,
+        "mean_predicted_default": 0.25182971900592105,
+        "observed_default_rate": 0.26438817071011156,
+        "brier_score": 0.1905431596649767
+      },
+      {
+        "group": "C4",
+        "count": 12444,
+        "mean_predicted_default": 0.283252131072884,
+        "observed_default_rate": 0.2816618450658952,
+        "brier_score": 0.19672502830970914
+      },
+      {
+        "group": "C5",
+        "count": 12656,
+        "mean_predicted_default": 0.2983615891717235,
+        "observed_default_rate": 0.2969342604298357,
+        "brier_score": 0.20308915526985025
+      },
+      {
+        "group": "D1",
+        "count": 7190,
+        "mean_predicted_default": 0.3233829040525244,
+        "observed_default_rate": 0.3367176634214186,
+        "brier_score": 0.2164147416118776
+      },
+      {
+        "group": "D2",
+        "count": 7342,
+        "mean_predicted_default": 0.3417301556946872,
+        "observed_default_rate": 0.32906564968673385,
+        "brier_score": 0.21546293553292922
+      },
+      {
+        "group": "D3",
+        "count": 6258,
+        "mean_predicted_default": 0.337529561589691,
+        "observed_default_rate": 0.3574624480664749,
+        "brier_score": 0.22607897743645833
+      },
+      {
+        "group": "D4",
+        "count": 4239,
+        "mean_predicted_default": 0.3576427400647221,
+        "observed_default_rate": 0.3760320830384525,
+        "brier_score": 0.22723565661773706
+      },
+      {
+        "group": "D5",
+        "count": 3113,
+        "mean_predicted_default": 0.3727091096904358,
+        "observed_default_rate": 0.3986508191455188,
+        "brier_score": 0.2330242275276338
+      },
+      {
+        "group": "E1",
+        "count": 3327,
+        "mean_predicted_default": 0.3872719007613191,
+        "observed_default_rate": 0.3997595431319507,
+        "brier_score": 0.23248062938199887
+      },
+      {
+        "group": "E2",
+        "count": 2137,
+        "mean_predicted_default": 0.41143885063817015,
+        "observed_default_rate": 0.4206832007487131,
+        "brier_score": 0.23278215755948725
+      },
+      {
+        "group": "E3",
+        "count": 2007,
+        "mean_predicted_default": 0.44098268206879154,
+        "observed_default_rate": 0.4120577977080219,
+        "brier_score": 0.2336109155642917
+      },
+      {
+        "group": "E4",
+        "count": 2025,
+        "mean_predicted_default": 0.47020897700248593,
+        "observed_default_rate": 0.42617283950617285,
+        "brier_score": 0.23794109582481135
+      },
+      {
+        "group": "E5",
+        "count": 2074,
+        "mean_predicted_default": 0.5164368684781719,
+        "observed_default_rate": 0.45178399228543875,
+        "brier_score": 0.24443024247790515
+      },
+      {
+        "group": "F1",
+        "count": 1435,
+        "mean_predicted_default": 0.528443919226364,
+        "observed_default_rate": 0.4752613240418119,
+        "brier_score": 0.24629056784601575
+      },
+      {
+        "group": "F2",
+        "count": 934,
+        "mean_predicted_default": 0.5464587085340741,
+        "observed_default_rate": 0.5246252676659529,
+        "brier_score": 0.24114709025978623
+      },
+      {
+        "group": "F3",
+        "count": 795,
+        "mean_predicted_default": 0.5655843212917065,
+        "observed_default_rate": 0.5169811320754717,
+        "brier_score": 0.24519085767877252
+      },
+      {
+        "group": "F4",
+        "count": 655,
+        "mean_predicted_default": 0.5709415673770336,
+        "observed_default_rate": 0.517557251908397,
+        "brier_score": 0.24841481421552458
+      },
+      {
+        "group": "F5",
+        "count": 570,
+        "mean_predicted_default": 0.5811024674932679,
+        "observed_default_rate": 0.5491228070175439,
+        "brier_score": 0.2410767402140215
+      },
+      {
+        "group": "G1",
+        "count": 449,
+        "mean_predicted_default": 0.5609189310094022,
+        "observed_default_rate": 0.49665924276169265,
+        "brier_score": 0.24659704709781582
+      },
+      {
+        "group": "G2",
+        "count": 364,
+        "mean_predicted_default": 0.5660123751710031,
+        "observed_default_rate": 0.5576923076923077,
+        "brier_score": 0.24209159653452872
+      },
+      {
+        "group": "G3",
+        "count": 257,
+        "mean_predicted_default": 0.5699228479696403,
+        "observed_default_rate": 0.5097276264591439,
+        "brier_score": 0.23872389063213764
+      },
+      {
+        "group": "G4",
+        "count": 231,
+        "mean_predicted_default": 0.5733668330763815,
+        "observed_default_rate": 0.5021645021645021,
+        "brier_score": 0.24687299923275313
+      },
+      {
+        "group": "G5",
+        "count": 205,
+        "mean_predicted_default": 0.5650032064416354,
+        "observed_default_rate": 0.5609756097560976,
+        "brier_score": 0.23935581413708487
+      }
+    ],
+    "loan_amnt_band": [
+      {
+        "group": "(12000.0, 20000.0]",
+        "count": 47672,
+        "mean_predicted_default": 0.2732298190682787,
+        "observed_default_rate": 0.26548078536667225,
+        "brier_score": 0.17670384092752783
+      },
+      {
+        "group": "(20000.0, 40000.0]",
+        "count": 39904,
+        "mean_predicted_default": 0.28137096353462465,
+        "observed_default_rate": 0.2823777064955894,
+        "brier_score": 0.18405972013248142
+      },
+      {
+        "group": "(7000.0, 12000.0]",
+        "count": 52304,
+        "mean_predicted_default": 0.21853488868784154,
+        "observed_default_rate": 0.22896910370143775,
+        "brier_score": 0.16166949784311593
+      },
+      {
+        "group": "(999.999, 7000.0]",
+        "count": 47984,
+        "mean_predicted_default": 0.1715666402945408,
+        "observed_default_rate": 0.19104284761587195,
+        "brier_score": 0.1456347334499414
+      }
+    ]
+  },
+  "selected_policy_sensitivity": [
+    {
+      "lgd": 0.6,
+      "required_return": 0.0,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 94937,
+      "selection_rate": 0.5053496146148277,
+      "expected_profit": 54897206.67831162,
+      "expected_return": 0.04310884256885128,
+      "expected_npv_profit": -64385829.530574426,
+      "annualized_return": -0.014249216497051671,
+      "total_realized_profit": -16442793.929586887
+    },
+    {
+      "lgd": 0.6,
+      "required_return": 0.05,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 22962,
+      "selection_rate": 0.12222671719967636,
+      "expected_profit": 33654141.017116934,
+      "expected_return": 0.08454588091995183,
+      "expected_npv_profit": -13400904.251920061,
+      "annualized_return": -0.006884810555132268,
+      "total_realized_profit": -7968981.134815639
+    },
+    {
+      "lgd": 0.6,
+      "required_return": 0.1,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 4952,
+      "selection_rate": 0.026359494102116424,
+      "expected_profit": 12698198.128010105,
+      "expected_return": 0.12365829366302623,
+      "expected_npv_profit": -826869.2553549624,
+      "annualized_return": -0.0014246764271929736,
+      "total_realized_profit": 193303.87366096582
+    },
+    {
+      "lgd": 0.75,
+      "required_return": 0.0,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 62160,
+      "selection_rate": 0.33087765617680875,
+      "expected_profit": 30418990.523769047,
+      "expected_return": 0.03613049137408634,
+      "expected_npv_profit": -50716191.37199812,
+      "annualized_return": -0.01653828648126757,
+      "total_realized_profit": 354934.7385648824
+    },
+    {
+      "lgd": 0.75,
+      "required_return": 0.05,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 11175,
+      "selection_rate": 0.059484520717114506,
+      "expected_profit": 16262364.866056945,
+      "expected_return": 0.07841514911807573,
+      "expected_npv_profit": -9387542.118470356,
+      "annualized_return": -0.008994159567679511,
+      "total_realized_profit": 73654.87692064105
+    },
+    {
+      "lgd": 0.75,
+      "required_return": 0.1,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 1654,
+      "selection_rate": 0.008804241366094622,
+      "expected_profit": 3994111.629938457,
+      "expected_return": 0.11918816536786701,
+      "expected_npv_profit": -554254.2551679278,
+      "annualized_return": -0.0031320679711136245,
+      "total_realized_profit": 709343.5531166709
+    },
+    {
+      "lgd": 1.0,
+      "required_return": 0.0,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 28833,
+      "selection_rate": 0.15347804794958056,
+      "expected_profit": 11992821.745081656,
+      "expected_return": 0.02940589726609522,
+      "expected_npv_profit": -28175598.535470307,
+      "annualized_return": -0.01837699574156739,
+      "total_realized_profit": 7319090.4389496995
+    },
+    {
+      "lgd": 1.0,
+      "required_return": 0.05,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 3396,
+      "selection_rate": 0.01807690669846272,
+      "expected_profit": 4422831.624681739,
+      "expected_return": 0.06982730188324976,
+      "expected_npv_profit": -3698527.1010514456,
+      "annualized_return": -0.011407702231042142,
+      "total_realized_profit": 1190363.7904149196
+    },
+    {
+      "lgd": 1.0,
+      "required_return": 0.1,
+      "good_profit_haircut": 0.65,
+      "annual_discount_rate": 0.08,
+      "approval_count": 172,
+      "selection_rate": 0.0009155559340799727,
+      "expected_profit": 373342.6427397665,
+      "expected_return": 0.11813799420603485,
+      "expected_npv_profit": -76855.3653099976,
+      "annualized_return": -0.004690431271843592,
+      "total_realized_profit": 188834.32397284755
+    }
+  ],
+  "candidates": [
+    {
+      "name": "logistic_balanced",
+      "probability": {
+        "roc_auc": 0.6943527088707127,
+        "pr_auc": 0.39574157598573,
+        "brier_score": 0.16698874881785117,
+        "mean_predicted_default": 0.22689857805574082,
+        "actual_default_rate": 0.2398916237278031,
+        "deciles": [
+          {
+            "decile": 1,
+            "count": 21349,
+            "mean_predicted_default": 0.0581045882164513,
+            "observed_default_rate": 0.05883179540025294
+          },
+          {
+            "decile": 2,
+            "count": 20043,
+            "mean_predicted_default": 0.10601934444345214,
+            "observed_default_rate": 0.11096143291922367
+          },
+          {
+            "decile": 3,
+            "count": 18104,
+            "mean_predicted_default": 0.13470159615553767,
+            "observed_default_rate": 0.1462107821475917
+          },
+          {
+            "decile": 4,
+            "count": 19044,
+            "mean_predicted_default": 0.16903427469417606,
+            "observed_default_rate": 0.1874606175173283
+          },
+          {
+            "decile": 5,
+            "count": 16801,
+            "mean_predicted_default": 0.19587533220944967,
+            "observed_default_rate": 0.21689185167549552
+          },
+          {
+            "decile": 6,
+            "count": 25806,
+            "mean_predicted_default": 0.24009827857105426,
+            "observed_default_rate": 0.2500581260172053
+          },
+          {
+            "decile": 7,
+            "count": 13004,
+            "mean_predicted_default": 0.28011733798902383,
+            "observed_default_rate": 0.29967702245462935
+          },
+          {
+            "decile": 8,
+            "count": 20684,
+            "mean_predicted_default": 0.3174162799843994,
+            "observed_default_rate": 0.3300135370334558
+          },
+          {
+            "decile": 9,
+            "count": 16845,
+            "mean_predicted_default": 0.3738348772756658,
+            "observed_default_rate": 0.392104482042149
+          },
+          {
+            "decile": 10,
+            "count": 16184,
+            "mean_predicted_default": 0.4702618098062324,
+            "observed_default_rate": 0.49091695501730104
+          }
+        ]
+      },
+      "selected_policy": {
+        "lgd": 1.0,
+        "good_profit_haircut": 0.5,
+        "required_return": 0.0,
+        "approval_rule": "expected_return > required_return",
+        "use_npv": false,
+        "annual_discount_rate": 0.08,
+        "servicing_cost_rate": 0.0,
+        "recovery_rate": 0.25,
+        "selection_rule": "max validation total_realized_profit among non-empty policies with non-negative scenario expected_profit, non-negative expected_return, non-negative required_return, and positive realized validation profit; tie-break expected_profit, approved default rate, approval count",
+        "validation_expected_profit": 3992604.574080534,
+        "validation_realized_profit": 4141726.4637518963,
+        "validation_approval_count": 13026,
+        "validation_selection_rate": 0.0693373930077077,
+        "validation_approved_default_rate": 0.08083832335329341
+      },
+      "profit_policy": {
+        "expected_profit": 3992604.574080534,
+        "expected_return": 0.021324726616450233,
+        "approval_count": 13026,
+        "selection_rate": 0.0693373930077077,
+        "mean_expected_profit": 306.51040795950667,
+        "mean_expected_return": 0.019464040126281796,
+        "lgd": 1.0,
+        "required_return": 0.0,
+        "good_profit_haircut": 0.5,
+        "actual_default_rate": 0.08083832335329341,
+        "total_realized_profit": 4141726.4637518963,
+        "mean_realized_profit": 317.95842651250547
+      }
+    },
+    {
+      "name": "logistic",
+      "probability": {
+        "roc_auc": 0.6944774257429038,
+        "pr_auc": 0.3970578527533672,
+        "brier_score": 0.16694926685303615,
+        "mean_predicted_default": 0.2267148204968389,
+        "actual_default_rate": 0.2398916237278031,
+        "deciles": [
+          {
+            "decile": 1,
+            "count": 20699,
+            "mean_predicted_default": 0.05714989182973639,
+            "observed_default_rate": 0.058746799362288035
+          },
+          {
+            "decile": 2,
+            "count": 19171,
+            "mean_predicted_default": 0.10452689594176885,
+            "observed_default_rate": 0.1073496426894789
+          },
+          {
+            "decile": 3,
+            "count": 22697,
+            "mean_predicted_default": 0.1344676690498086,
+            "observed_default_rate": 0.1496232982332467
+          },
+          {
+            "decile": 4,
+            "count": 12685,
+            "mean_predicted_default": 0.16991847171819932,
+            "observed_default_rate": 0.18919984233346474
+          },
+          {
+            "decile": 5,
+            "count": 26818,
+            "mean_predicted_default": 0.20074402167925198,
+            "observed_default_rate": 0.21589976881199194
+          },
+          {
+            "decile": 6,
+            "count": 19622,
+            "mean_predicted_default": 0.24510685445741962,
+            "observed_default_rate": 0.2605239017429416
+          },
+          {
+            "decile": 7,
+            "count": 10342,
+            "mean_predicted_default": 0.2783946085096259,
+            "observed_default_rate": 0.29530071552891124
+          },
+          {
+            "decile": 8,
+            "count": 18456,
+            "mean_predicted_default": 0.31112607898227407,
+            "observed_default_rate": 0.3226051148677937
+          },
+          {
+            "decile": 9,
+            "count": 20870,
+            "mean_predicted_default": 0.3647733360071352,
+            "observed_default_rate": 0.3824628653569717
+          },
+          {
+            "decile": 10,
+            "count": 16504,
+            "mean_predicted_default": 0.4708031057704756,
+            "observed_default_rate": 0.4910930683470674
+          }
+        ]
+      },
+      "selected_policy": {
+        "lgd": 1.0,
+        "good_profit_haircut": 0.5,
+        "required_return": 0.0,
+        "approval_rule": "expected_return > required_return",
+        "use_npv": false,
+        "annual_discount_rate": 0.08,
+        "servicing_cost_rate": 0.0,
+        "recovery_rate": 0.25,
+        "selection_rule": "max validation total_realized_profit among non-empty policies with non-negative scenario expected_profit, non-negative expected_return, non-negative required_return, and positive realized validation profit; tie-break expected_profit, approved default rate, approval count",
+        "validation_expected_profit": 4250094.417659198,
+        "validation_realized_profit": 4342614.693919225,
+        "validation_approval_count": 13538,
+        "validation_selection_rate": 0.07206276881148065,
+        "validation_approved_default_rate": 0.07925838380853893
+      },
+      "profit_policy": {
+        "expected_profit": 4250094.417659198,
+        "expected_return": 0.021797152855853107,
+        "approval_count": 13538,
+        "selection_rate": 0.07206276881148065,
+        "mean_expected_profit": 313.9381310133844,
+        "mean_expected_return": 0.01938416766434082,
+        "lgd": 1.0,
+        "required_return": 0.0,
+        "good_profit_haircut": 0.5,
+        "actual_default_rate": 0.07925838380853893,
+        "total_realized_profit": 4342614.693919225,
+        "mean_realized_profit": 320.7722480365803
+      }
+    },
+    {
+      "name": "random_forest",
+      "probability": {
+        "roc_auc": 0.690058353295741,
+        "pr_auc": 0.39534431126096337,
+        "brier_score": 0.16740104262463307,
+        "mean_predicted_default": 0.23812258749004064,
+        "actual_default_rate": 0.2398916237278031,
+        "deciles": [
+          {
+            "decile": 1,
+            "count": 18914,
+            "mean_predicted_default": 0.055994959786045725,
+            "observed_default_rate": 0.055197208417045576
+          },
+          {
+            "decile": 2,
+            "count": 18945,
+            "mean_predicted_default": 0.10585838697920438,
+            "observed_default_rate": 0.10973871733966746
+          },
+          {
+            "decile": 3,
+            "count": 23033,
+            "mean_predicted_default": 0.14239972230507858,
+            "observed_default_rate": 0.15134806581860807
+          },
+          {
+            "decile": 4,
+            "count": 19417,
+            "mean_predicted_default": 0.18106524131956073,
+            "observed_default_rate": 0.1885976206417057
+          },
+          {
+            "decile": 5,
+            "count": 18673,
+            "mean_predicted_default": 0.21401472430599058,
+            "observed_default_rate": 0.2188721683714454
+          },
+          {
+            "decile": 6,
+            "count": 19038,
+            "mean_predicted_default": 0.24081606992402024,
+            "observed_default_rate": 0.2560142872150436
+          },
+          {
+            "decile": 7,
+            "count": 18116,
+            "mean_predicted_default": 0.2855113339606419,
+            "observed_default_rate": 0.29200706557739015
+          },
+          {
+            "decile": 8,
+            "count": 14882,
+            "mean_predicted_default": 0.3244260538888061,
+            "observed_default_rate": 0.32804730546969496
+          },
+          {
+            "decile": 9,
+            "count": 21463,
+            "mean_predicted_default": 0.38619062589587316,
+            "observed_default_rate": 0.37949028560779013
+          },
+          {
+            "decile": 10,
+            "count": 15383,
+            "mean_predicted_default": 0.5203311981520726,
+            "observed_default_rate": 0.48872131573815253
+          }
+        ]
+      },
+      "selected_policy": {
+        "lgd": 1.0,
+        "good_profit_haircut": 0.5,
+        "required_return": 0.0,
+        "approval_rule": "expected_return > required_return",
+        "use_npv": false,
+        "annual_discount_rate": 0.08,
+        "servicing_cost_rate": 0.0,
+        "recovery_rate": 0.25,
+        "selection_rule": "max validation total_realized_profit among non-empty policies with non-negative scenario expected_profit, non-negative expected_return, non-negative required_return, and positive realized validation profit; tie-break expected_profit, approved default rate, approval count",
+        "validation_expected_profit": 2790287.1232865313,
+        "validation_realized_profit": 4915468.37407871,
+        "validation_approval_count": 10357,
+        "validation_selection_rate": 0.055130307030617894,
+        "validation_approved_default_rate": 0.04711789128125905
+      },
+      "profit_policy": {
+        "expected_profit": 2790287.1232865313,
+        "expected_return": 0.016737692303412526,
+        "approval_count": 10357,
+        "selection_rate": 0.055130307030617894,
+        "mean_expected_profit": 269.4107486035079,
+        "mean_expected_return": 0.01634944485606627,
+        "lgd": 1.0,
+        "required_return": 0.0,
+        "good_profit_haircut": 0.5,
+        "actual_default_rate": 0.04711789128125905,
+        "total_realized_profit": 4915468.37407871,
+        "mean_realized_profit": 474.60349271784395
+      }
+    },
+    {
+      "name": "hist_gradient_boosting",
+      "probability": {
+        "roc_auc": 0.6978401399566935,
+        "pr_auc": 0.40514790868485545,
+        "brier_score": 0.16614488694966556,
+        "mean_predicted_default": 0.23376453897144087,
+        "actual_default_rate": 0.2398916237278031,
+        "deciles": [
+          {
+            "decile": 1,
+            "count": 22844,
+            "mean_predicted_default": 0.056943180740476024,
+            "observed_default_rate": 0.05778322535457888
+          },
+          {
+            "decile": 2,
+            "count": 15284,
+            "mean_predicted_default": 0.10325268673899964,
+            "observed_default_rate": 0.10965715781209108
+          },
+          {
+            "decile": 3,
+            "count": 18988,
+            "mean_predicted_default": 0.13179811592436846,
+            "observed_default_rate": 0.14172108700231725
+          },
+          {
+            "decile": 4,
+            "count": 23312,
+            "mean_predicted_default": 0.1667695538210882,
+            "observed_default_rate": 0.18175188743994508
+          },
+          {
+            "decile": 5,
+            "count": 15476,
+            "mean_predicted_default": 0.20119602436986656,
+            "observed_default_rate": 0.21950116309123804
+          },
+          {
+            "decile": 6,
+            "count": 18117,
+            "mean_predicted_default": 0.23277036727213288,
+            "observed_default_rate": 0.24468731026108076
+          },
+          {
+            "decile": 7,
+            "count": 17934,
+            "mean_predicted_default": 0.2692068872390687,
+            "observed_default_rate": 0.28465484554477527
+          },
+          {
+            "decile": 8,
+            "count": 18525,
+            "mean_predicted_default": 0.3129990601271803,
+            "observed_default_rate": 0.3203778677462888
+          },
+          {
+            "decile": 9,
+            "count": 20441,
+            "mean_predicted_default": 0.386499376331399,
+            "observed_default_rate": 0.382857981507754
+          },
+          {
+            "decile": 10,
+            "count": 16943,
+            "mean_predicted_default": 0.5187507954505369,
+            "observed_default_rate": 0.49855397509295873
+          }
+        ]
+      },
+      "selected_policy": {
+        "lgd": 1.0,
+        "good_profit_haircut": 0.65,
+        "required_return": 0.0,
+        "approval_rule": "expected_return > required_return",
+        "use_npv": false,
+        "annual_discount_rate": 0.08,
+        "servicing_cost_rate": 0.0,
+        "recovery_rate": 0.25,
+        "selection_rule": "max validation total_realized_profit among non-empty policies with non-negative scenario expected_profit, non-negative expected_return, non-negative required_return, and positive realized validation profit; tie-break expected_profit, approved default rate, approval count",
+        "validation_expected_profit": 11992821.745081656,
+        "validation_realized_profit": 7319090.4389496995,
+        "validation_approval_count": 28833,
+        "validation_selection_rate": 0.15347804794958056,
+        "validation_approved_default_rate": 0.09124960982207887
+      },
+      "profit_policy": {
+        "expected_profit": 11992821.745081656,
+        "expected_return": 0.02940589726609522,
+        "approval_count": 28833,
+        "selection_rate": 0.15347804794958056,
+        "mean_expected_profit": 415.9408228447146,
+        "mean_expected_return": 0.026114371741581995,
+        "lgd": 1.0,
+        "required_return": 0.0,
+        "good_profit_haircut": 0.65,
+        "actual_default_rate": 0.09124960982207887,
+        "total_realized_profit": 7319090.4389496995,
+        "mean_realized_profit": 253.8442215152672
+      }
+    }
+  ]
+}

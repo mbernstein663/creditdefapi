@@ -1,0 +1,15 @@
+split,issue_year,rows
+train,2007,603
+train,2008,2393
+train,2009,5281
+train,2010,12537
+train,2011,21721
+train,2012,53367
+train,2013,134804
+train,2014,223103
+train,2015,375546
+calibration,2016,196607
+validation,2016,96498
+validation,2017,91366
+test,2017,77955
+test,2018,56318

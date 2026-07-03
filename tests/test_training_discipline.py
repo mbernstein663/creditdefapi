@@ -16,6 +16,55 @@ def test_sample_training_uses_smoke_artifact_and_report_paths():
     assert report_dir.name == "smoke"
 
 
+def _policy_selection_frame(realized):
+    return pd.DataFrame(
+        {
+            "funded_amnt": [1000, 1000, 1000],
+            "term_months": [12, 12, 12],
+            "installment": [100, 100, 100],
+            "total_pymnt": [1000 + value for value in realized],
+            "default": [0, 1, 0],
+        }
+    )
+
+
+def test_required_return_selector_chooses_profitable_validation_threshold():
+    frame = _policy_selection_frame([100, -700, 500])
+
+    policy, rows = train.select_required_return_policy(frame, [0.10, 0.10, 0.01])
+
+    assert policy["required_return"] >= 0
+    assert policy["required_return"] > 0.08
+    assert policy["validation_expected_profit"] >= 0
+    assert policy["good_profit_haircut"] in train.GOOD_PROFIT_HAIRCUT_CANDIDATES
+    assert policy["validation_approval_count"] == 1
+    assert policy["validation_realized_profit"] == 500
+    assert policy["required_return"] in [row["required_return"] for row in rows]
+
+
+def test_required_return_selector_rejects_all_when_validation_lending_loses():
+    frame = _policy_selection_frame([-100, -100, -100])
+
+    policy, rows = train.select_required_return_policy(frame, [0.10, 0.10, 0.01])
+
+    assert policy["required_return"] >= 0
+    assert policy["validation_approval_count"] == 0
+    assert policy["good_profit_haircut"] in train.GOOD_PROFIT_HAIRCUT_CANDIDATES
+    assert policy["validation_realized_profit"] == 0
+    assert "non-negative scenario EV" in policy["profit_warning"]
+    assert any(row["approval_count"] > 0 for row in rows)
+
+
+def test_training_considers_planned_default_model_candidates():
+    assert train.GOOD_PROFIT_HAIRCUT_CANDIDATES == [0.25, 0.35, 0.50, 0.65, 0.80, 1.00]
+    assert train.DEFAULT_MODEL_CANDIDATES == [
+        "logistic_balanced",
+        "logistic",
+        "random_forest",
+        "hist_gradient_boosting",
+    ]
+
+
 def test_locked_evaluation_uses_saved_test_ids(tmp_path):
     csv_path = tmp_path / "accepted.csv"
     pd.DataFrame(

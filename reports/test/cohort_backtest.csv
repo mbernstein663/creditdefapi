@@ -1,0 +1,4 @@
+cohort_type,cohort_value,rows,observed_default_rate,mean_predicted_default_rate,brier_score,auc,approval_rate,expected_profit,realized_profit
+issue_year,2018,1,1.0,0.1,0.81,,1.0,296.0,-800.0
+issue_quarter,2018Q1,1,1.0,0.1,0.81,,1.0,296.0,-800.0
+issue_month,2018-02,1,1.0,0.1,0.81,,1.0,296.0,-800.0

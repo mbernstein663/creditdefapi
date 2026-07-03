@@ -1,0 +1,52 @@
+{
+  "bundle_type": "accepted",
+  "stage": "test",
+  "target_mode": "resolved_default",
+  "product_mode": "post_pricing_investment",
+  "calibration_method": "isotonic",
+  "source_fingerprint": {
+    "path": "C:\\Users\\micro\\Documents\\Projects\\APICreditTrial3\\.pytest_tmp\\test_locked_evaluation_uses_sa0\\accepted.csv",
+    "size_bytes": 231,
+    "sha256": "be8e2614bf84cc41d168a0001ac6e73be2fdb5170b027c5a5a6f331edb634e80"
+  },
+  "target_summary": null,
+  "policy": {
+    "lgd": 1.0,
+    "required_return": null,
+    "approval_rule": "expected_profit > 0"
+  },
+  "calibration": [
+    {
+      "decile": 1,
+      "count": 1,
+      "mean_predicted_default": 0.1,
+      "observed_default_rate": 1.0
+    }
+  ],
+  "policy_summary": [
+    {
+      "expected_profit": 296.0,
+      "expected_return": 0.296,
+      "approval_count": 1,
+      "selection_rate": 1.0,
+      "mean_expected_profit": 296.0,
+      "mean_expected_return": 0.296,
+      "lgd": 1.0,
+      "required_return": null,
+      "good_profit_haircut": 1.0,
+      "actual_default_rate": 1.0,
+      "total_realized_profit": -800.0,
+      "mean_realized_profit": -800.0
+    }
+  ],
+  "sensitivity_summary": [],
+  "cohort_backtest_rows": 3,
+  "bootstrap_rows": 9,
+  "proxy_rows": 0,
+  "stage_summary": {
+    "row_count": 1,
+    "split_summary": [],
+    "test_default_rate": 1.0,
+    "locked_test": true
+  }
+}

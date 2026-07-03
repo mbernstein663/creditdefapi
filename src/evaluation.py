@@ -26,4 +26,14 @@ def evaluate_profit_policy(bundle, frame):
     locked_lgd = bundle.policy.get("lgd", DEFAULT_LGD)
     raw = predict_raw_default(bundle.model, frame, bundle.feature_columns)
     p_default = bundle.calibrator.predict(raw)
-    return policy_metrics(frame, p_default, lgd=locked_lgd, required_return=bundle.policy.get("required_return"))
+    return policy_metrics(
+        frame,
+        p_default,
+        lgd=locked_lgd,
+        required_return=bundle.policy.get("required_return"),
+        use_npv=bool(bundle.policy.get("use_npv")),
+        annual_discount_rate=float(bundle.policy.get("annual_discount_rate", 0.08)),
+        servicing_cost_rate=float(bundle.policy.get("servicing_cost_rate", 0.0)),
+        recovery_rate=float(bundle.policy.get("recovery_rate", 0.25)),
+        good_profit_haircut=float(bundle.policy.get("good_profit_haircut", 1.0)),
+    )
