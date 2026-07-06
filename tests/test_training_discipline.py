@@ -1,12 +1,52 @@
 import json
 
-import pytest
 import pandas as pd
+import pytest
 
 import evaluate_locked
 import train
-from src.artifacts import ModelBundle, file_fingerprint, save_model_bundle
-from tests.test_artifacts_batch_scoring import DummyModel, IdentityCalibrator
+from src.artifacts import file_fingerprint, load_model_bundle
+
+
+def _training_frame(rows=40):
+    issue_dates = pd.date_range("2015-01-01", periods=rows, freq="MS")
+    data = []
+    for i, issue_date in enumerate(issue_dates):
+        default = int(i % 4 == 0)
+        data.append(
+            {
+                "id": str(i + 1),
+                "loan_amnt": 1000 + 10 * i,
+                "int_rate": 9 + (i % 5),
+                "annual_inc": 50000 + 1000 * i,
+                "dti": 10 + (i % 7),
+                "fico_range_low": 680 + (i % 15),
+                "fico_range_high": 684 + (i % 15),
+                "delinq_2yrs": i % 2,
+                "inq_last_6mths": i % 3,
+                "open_acc": 8 + (i % 4),
+                "pub_rec": 0,
+                "revol_bal": 1000 + 50 * i,
+                "revol_util": f"{20 + (i % 40)}%",
+                "total_acc": 12 + (i % 10),
+                "mort_acc": i % 3,
+                "acc_open_past_24mths": i % 5,
+                "pub_rec_bankruptcies": 0,
+                "grade": "A" if i % 2 == 0 else "B",
+                "sub_grade": "A1" if i % 2 == 0 else "B2",
+                "emp_length": "4 years",
+                "home_ownership": "RENT" if i % 2 == 0 else "MORTGAGE",
+                "verification_status": "Verified" if i % 2 == 0 else "Not Verified",
+                "purpose": "debt_consolidation",
+                "addr_state": "NY" if i % 2 == 0 else "CA",
+                "application_type": "Individual",
+                "initial_list_status": "w",
+                "term": " 36 months",
+                "loan_status": "Charged Off" if default else "Fully Paid",
+                "issue_d": issue_date.strftime("%b-%Y"),
+            }
+        )
+    return pd.DataFrame(data)
 
 
 def test_sample_training_uses_smoke_artifact_and_report_paths():
@@ -16,120 +56,51 @@ def test_sample_training_uses_smoke_artifact_and_report_paths():
     assert report_dir.name == "smoke"
 
 
-def _policy_selection_frame(realized):
-    return pd.DataFrame(
-        {
-            "funded_amnt": [1000, 1000, 1000],
-            "term_months": [12, 12, 12],
-            "installment": [100, 100, 100],
-            "total_pymnt": [1000 + value for value in realized],
-            "default": [0, 1, 0],
-        }
-    )
-
-
-def test_required_return_selector_chooses_profitable_validation_threshold():
-    frame = _policy_selection_frame([100, -700, 500])
-
-    policy, rows = train.select_required_return_policy(frame, [0.10, 0.10, 0.01])
-
-    assert policy["required_return"] >= 0
-    assert policy["required_return"] > 0.08
-    assert policy["validation_expected_profit"] >= 0
-    assert policy["good_profit_haircut"] in train.GOOD_PROFIT_HAIRCUT_CANDIDATES
-    assert policy["validation_approval_count"] == 1
-    assert policy["validation_realized_profit"] == 500
-    assert policy["required_return"] in [row["required_return"] for row in rows]
-
-
-def test_required_return_selector_rejects_all_when_validation_lending_loses():
-    frame = _policy_selection_frame([-100, -100, -100])
-
-    policy, rows = train.select_required_return_policy(frame, [0.10, 0.10, 0.01])
-
-    assert policy["required_return"] >= 0
-    assert policy["validation_approval_count"] == 0
-    assert policy["good_profit_haircut"] in train.GOOD_PROFIT_HAIRCUT_CANDIDATES
-    assert policy["validation_realized_profit"] == 0
-    assert "non-negative scenario EV" in policy["profit_warning"]
-    assert any(row["approval_count"] > 0 for row in rows)
-
-
-def test_training_considers_planned_default_model_candidates():
-    assert train.GOOD_PROFIT_HAIRCUT_CANDIDATES == [0.25, 0.35, 0.50, 0.65, 0.80, 1.00]
-    assert train.DEFAULT_MODEL_CANDIDATES == [
-        "logistic_balanced",
-        "logistic",
-        "random_forest",
-        "hist_gradient_boosting",
-    ]
-
-
-def test_locked_evaluation_uses_saved_test_ids(tmp_path):
+def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, monkeypatch):
     csv_path = tmp_path / "accepted.csv"
-    pd.DataFrame(
-        {
-            "id": ["1", "2", "3"],
-            "loan_amnt": [1000, 1000, 1000],
-            "funded_amnt": [1000, 1000, 1000],
-            "term": [" 36 months", " 36 months", " 36 months"],
-            "installment": [40, 40, 40],
-            "loan_status": ["Fully Paid", "Charged Off", "Fully Paid"],
-            "issue_d": ["Jan-2018", "Feb-2018", "Mar-2018"],
-            "total_pymnt": [1100, 200, 1200],
-        }
-    ).to_csv(csv_path, index=False)
-    bundle = ModelBundle(
-        DummyModel(),
-        IdentityCalibrator(),
-        ["loan_amnt"],
-        "accepted",
-        policy={"lgd": 1.0, "required_return": None, "approval_rule": "expected_profit > 0"},
-        metadata={
-            "source_fingerprint": file_fingerprint(csv_path),
-            "split_manifest": {"test_ids": ["2"]},
-        },
-    )
     bundle_path = tmp_path / "bundle.joblib"
-    save_model_bundle(bundle, bundle_path)
+    _training_frame().to_csv(csv_path, index=False)
+    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+
+    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    bundle = load_model_bundle(saved)
+
+    assert bundle.metadata["model_version"] == "accepted-default-v1"
+    assert bundle.metadata["split_manifest"]["row_counts"]["test"] > 0
+    assert bundle.metadata["split_date_boundaries"]["validation"]["min"] is not None
+    assert bundle.metadata["validation_metrics_summary"]["rows"] == bundle.metadata["split_row_counts"]["validation"]
+    assert bundle.metadata["cross_validation_summary"]["selected_model_name"] == bundle.metadata["selected_model_name"]
+    assert (tmp_path / "reports" / "validation" / "metrics_summary.json").exists()
+    assert (tmp_path / "reports" / "validation" / "cross_validation_summary.csv").exists()
+
+
+def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monkeypatch):
+    csv_path = tmp_path / "accepted.csv"
+    bundle_path = tmp_path / "bundle.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    monkeypatch.setattr(evaluate_locked, "REPORT_DIR", tmp_path / "reports")
 
     output = evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
-    result = json.loads(output.read_text(encoding="utf-8"))
+    summary = json.loads(output.read_text(encoding="utf-8"))
 
-    assert output.name == "locked_test_metrics.json"
-    assert result["test_row_count"] == 1
-    assert result["test_default_rate"] == 1.0
-    assert result["profit_policy"]["actual_default_rate"] == 1.0
-    assert result["profit_policy"]["total_realized_profit"] == -800.0
+    assert output.name == "metrics_summary.json"
+    assert summary["rows"] > 0
+    assert (tmp_path / "reports" / "test" / "model_card.md").exists()
 
 
-def test_locked_evaluation_fails_without_saved_test_ids(tmp_path):
+def test_locked_evaluation_fails_on_source_fingerprint_drift(tmp_path):
     csv_path = tmp_path / "accepted.csv"
-    pd.DataFrame(
-        {
-            "id": ["1"],
-            "loan_amnt": [1000],
-            "funded_amnt": [1000],
-            "term": [" 36 months"],
-            "installment": [40],
-            "loan_status": ["Fully Paid"],
-            "issue_d": ["Jan-2018"],
-            "total_pymnt": [1100],
-        }
-    ).to_csv(csv_path, index=False)
     bundle_path = tmp_path / "bundle.joblib"
-    save_model_bundle(
-        ModelBundle(
-            DummyModel(),
-            IdentityCalibrator(),
-            ["loan_amnt"],
-            "accepted",
-            metadata={"source_fingerprint": file_fingerprint(csv_path)},
-        ),
-        bundle_path,
-    )
+    _training_frame().to_csv(csv_path, index=False)
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
 
-    with pytest.raises(ValueError, match="missing saved test split IDs"):
+    changed = _training_frame()
+    changed.loc[0, "annual_inc"] = 999999
+    changed.to_csv(csv_path, index=False)
+
+    with pytest.raises(ValueError, match="source CSV fingerprint does not match"):
         evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
 
 

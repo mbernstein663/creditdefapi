@@ -7,15 +7,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
-from .config import (
-    ACCEPTED_CATEGORICAL_RISK_FEATURES,
-    ACCEPTED_NUMERIC_RISK_FEATURES,
-    PRODUCT_MODE_POST_PRICING,
-    REJECTED_STYLE_CATEGORICAL_RISK_FEATURES,
-    REJECTED_STYLE_NUMERIC_RISK_FEATURES,
-    TARGET,
-)
-from .preprocessing import ensure_no_forbidden_features, feature_columns_for_product_mode
+from .config import ACCEPTED_CATEGORICAL_RISK_FEATURES, ACCEPTED_NUMERIC_RISK_FEATURES, TARGET
+from .preprocessing import ensure_no_forbidden_features
 
 
 def _one_hot_encoder(sparse=True):
@@ -25,29 +18,20 @@ def _one_hot_encoder(sparse=True):
         return OneHotEncoder(handle_unknown="ignore", sparse=sparse)
 
 
-def _feature_groups(kind: str, product_mode: str):
-    if kind == "accepted":
-        columns = feature_columns_for_product_mode(product_mode)
-        numeric = [c for c in ACCEPTED_NUMERIC_RISK_FEATURES if c in columns]
-        categorical = [c for c in ACCEPTED_CATEGORICAL_RISK_FEATURES if c in columns]
-    elif kind == "rejected_style":
-        numeric = REJECTED_STYLE_NUMERIC_RISK_FEATURES
-        categorical = REJECTED_STYLE_CATEGORICAL_RISK_FEATURES
-    else:
-        raise ValueError(f"unknown model kind: {kind}")
-
-    features = numeric + categorical
-    ensure_no_forbidden_features(features, product_mode=product_mode)
+def _feature_groups(feature_columns: list[str]) -> tuple[list[str], list[str]]:
+    ensure_no_forbidden_features(feature_columns)
+    numeric = [column for column in ACCEPTED_NUMERIC_RISK_FEATURES if column in feature_columns]
+    categorical = [column for column in ACCEPTED_CATEGORICAL_RISK_FEATURES if column in feature_columns]
     return numeric, categorical
 
 
-def build_preprocessor(kind: str, product_mode: str = PRODUCT_MODE_POST_PRICING, sparse=True) -> ColumnTransformer:
-    numeric, categorical = _feature_groups(kind, product_mode)
+def build_preprocessor(feature_columns: list[str], sparse=True) -> ColumnTransformer:
+    numeric, categorical = _feature_groups(feature_columns)
     return ColumnTransformer(
         [
             (
                 "num",
-                Pipeline([("impute", SimpleImputer(strategy="median")), ("scale", StandardScaler())]),
+                Pipeline([("impute", SimpleImputer(strategy="median", add_indicator=True)), ("scale", StandardScaler())]),
                 numeric,
             ),
             (
@@ -64,11 +48,11 @@ def build_preprocessor(kind: str, product_mode: str = PRODUCT_MODE_POST_PRICING,
     )
 
 
-def build_tree_preprocessor(kind: str, product_mode: str = PRODUCT_MODE_POST_PRICING) -> ColumnTransformer:
-    numeric, categorical = _feature_groups(kind, product_mode)
+def build_tree_preprocessor(feature_columns: list[str]) -> ColumnTransformer:
+    numeric, categorical = _feature_groups(feature_columns)
     return ColumnTransformer(
         [
-            ("num", SimpleImputer(strategy="median"), numeric),
+            ("num", SimpleImputer(strategy="median", add_indicator=True), numeric),
             (
                 "cat",
                 Pipeline(
@@ -83,33 +67,27 @@ def build_tree_preprocessor(kind: str, product_mode: str = PRODUCT_MODE_POST_PRI
     )
 
 
-def build_logistic_model(kind: str, class_weight="balanced", product_mode: str = PRODUCT_MODE_POST_PRICING) -> Pipeline:
-    return Pipeline(
-        [
-            ("preprocess", build_preprocessor(kind, product_mode=product_mode)),
-            (
-                "classifier",
-                LogisticRegression(
-                    max_iter=500,
-                    class_weight=class_weight,
-                    solver="saga",
-                    n_jobs=-1,
-                    random_state=42,
-                ),
-            ),
-        ]
-    )
-
-
-def build_default_model(name: str, kind: str, product_mode: str = PRODUCT_MODE_POST_PRICING) -> Pipeline:
-    if name == "logistic_balanced":
-        return build_logistic_model(kind, class_weight="balanced", product_mode=product_mode)
-    if name == "logistic":
-        return build_logistic_model(kind, class_weight=None, product_mode=product_mode)
-    if name == "random_forest":
+def build_model(candidate_name: str, feature_columns: list[str]) -> Pipeline:
+    if candidate_name == "logistic_balanced":
+        classifier = LogisticRegression(
+            max_iter=500,
+            class_weight="balanced",
+            solver="saga",
+            random_state=42,
+        )
+        return Pipeline([("preprocess", build_preprocessor(feature_columns)), ("classifier", classifier)])
+    if candidate_name == "logistic":
+        classifier = LogisticRegression(
+            max_iter=500,
+            class_weight=None,
+            solver="saga",
+            random_state=42,
+        )
+        return Pipeline([("preprocess", build_preprocessor(feature_columns)), ("classifier", classifier)])
+    if candidate_name == "random_forest":
         return Pipeline(
             [
-                ("preprocess", build_tree_preprocessor(kind, product_mode=product_mode)),
+                ("preprocess", build_tree_preprocessor(feature_columns)),
                 (
                     "classifier",
                     RandomForestClassifier(
@@ -122,10 +100,10 @@ def build_default_model(name: str, kind: str, product_mode: str = PRODUCT_MODE_P
                 ),
             ]
         )
-    if name == "hist_gradient_boosting":
+    if candidate_name == "hist_gradient_boosting":
         return Pipeline(
             [
-                ("preprocess", build_tree_preprocessor(kind, product_mode=product_mode)),
+                ("preprocess", build_tree_preprocessor(feature_columns)),
                 (
                     "classifier",
                     HistGradientBoostingClassifier(
@@ -137,25 +115,14 @@ def build_default_model(name: str, kind: str, product_mode: str = PRODUCT_MODE_P
                 ),
             ]
         )
-    raise ValueError(f"unknown default model candidate: {name}")
+    raise ValueError(f"unknown default model candidate: {candidate_name}")
 
 
-def fit_model(
-    train_df,
-    feature_columns,
-    kind: str,
-    class_weight="balanced",
-    product_mode: str = PRODUCT_MODE_POST_PRICING,
-    candidate_name: str | None = None,
-):
-    ensure_no_forbidden_features(feature_columns, product_mode=product_mode)
-    model = (
-        build_default_model(candidate_name, kind, product_mode=product_mode)
-        if candidate_name
-        else build_logistic_model(kind, class_weight=class_weight, product_mode=product_mode)
-    )
+def fit_model(train_df, feature_columns: list[str], candidate_name: str) -> Pipeline:
+    ensure_no_forbidden_features(feature_columns)
+    model = build_model(candidate_name, feature_columns)
     return model.fit(train_df[feature_columns], train_df[TARGET])
 
 
-def predict_raw_default(model, df, feature_columns):
+def predict_raw_default(model, df, feature_columns: list[str]):
     return model.predict_proba(df[feature_columns])[:, 1]

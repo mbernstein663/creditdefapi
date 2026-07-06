@@ -1,9 +1,7 @@
 *.csv
 artifacts/
 reports/
-.agents/
 .git/
-.matplotlib/
 .pytest_cache/
 .pytest_tmp/
 __pycache__/
@@ -11,4 +9,3 @@ __pycache__/
 *.log
 .venv/
 tests/
-docs/

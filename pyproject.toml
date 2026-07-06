@@ -14,12 +14,13 @@ dependencies = [
   "scikit-learn>=1.4",
   "matplotlib>=3.8",
   "joblib>=1.3",
+  "httpx>=0.27",
+  "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8",
-  "httpx>=0.27",
 ]
 
 [tool.setuptools.packages.find]

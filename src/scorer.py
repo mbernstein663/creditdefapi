@@ -1,161 +1,92 @@
 from __future__ import annotations
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from .artifacts import ModelBundle
-from .config import (
-    ACCEPTED_RISK_FEATURES,
-    DEFAULT_LGD,
-    PRODUCT_MODE_POST_PRICING,
-    PROFIT_INPUT_COLUMNS,
-    REJECTED_STYLE_RISK_FEATURES,
-)
-from .preprocessing import (
-    ensure_no_forbidden_features,
-    feature_columns_for_product_mode,
-    normalize_rejected_input,
-    parse_term_months,
-)
-from .profit import approve, expected_npv_profit, expected_profit, expected_return
+from .config import ACCEPTED_NUMERIC_RISK_FEATURES, ACCEPTED_RISK_FEATURES
+from .preprocessing import apply_numeric_feature_transforms, ensure_no_forbidden_features, parse_percent
+
+SCORING_NOTE = "Probability is calibrated for accepted/funded LendingClub-style loans with resolved historical outcomes."
 
 
-def _prepare_frame(frame: pd.DataFrame, bundle: ModelBundle) -> pd.DataFrame:
-    out = normalize_rejected_input(frame) if bundle.model_type == "rejected_style" else frame.copy()
-    if "term_months" not in out.columns and "term" in out.columns:
-        out["term_months"] = out["term"].map(parse_term_months)
-    return out.where(pd.notna(out), np.nan)
-
-
-def _validate_bundle_features(bundle: ModelBundle) -> None:
-    product_mode = bundle.metadata.get("product_mode", PRODUCT_MODE_POST_PRICING)
-    expected = {
-        "accepted": feature_columns_for_product_mode(product_mode),
-        "rejected_style": REJECTED_STYLE_RISK_FEATURES,
-        "direct_profit": ACCEPTED_RISK_FEATURES,
-    }.get(bundle.model_type)
-    if expected is None:
-        raise ValueError(f"unknown model type: {bundle.model_type}")
-    if list(bundle.feature_columns) != list(expected):
-        raise ValueError(f"{bundle.model_type} bundle feature columns do not match the configured allowlist")
-
-
-def _approval_rule(required_return) -> str:
-    return "expected_profit > 0" if required_return is None else "expected_return > required_return"
-
-
-def _missing(columns, frame: pd.DataFrame) -> list[str]:
-    return [c for c in columns if c not in frame.columns]
-
-
-def predict_default(bundle: ModelBundle, frame: pd.DataFrame):
-    _validate_bundle_features(bundle)
-    ensure_no_forbidden_features(
-        bundle.feature_columns,
-        product_mode=bundle.metadata.get("product_mode", PRODUCT_MODE_POST_PRICING),
+def _risk_band(p_default: pd.Series, thresholds: dict | None) -> pd.Series:
+    low_max = float((thresholds or {}).get("low_max", 0.10))
+    medium_max = float((thresholds or {}).get("medium_max", 0.20))
+    return pd.Series(
+        [
+            "low" if value < low_max else "medium" if value < medium_max else "high"
+            for value in pd.to_numeric(p_default, errors="coerce")
+        ],
+        index=p_default.index,
     )
-    missing = _missing(bundle.feature_columns, frame)
-    if missing:
-        raise ValueError(f"missing required scoring fields: {', '.join(missing)}")
+
+
+def _validate_bundle(bundle: ModelBundle) -> None:
+    if not set(bundle.feature_columns).issubset(set(ACCEPTED_RISK_FEATURES)):
+        raise ValueError("bundle feature columns do not match the configured accepted-loan feature allowlist")
+    ensure_no_forbidden_features(bundle.feature_columns)
     if bundle.calibrator is None:
         raise ValueError("scoring requires a calibrated model bundle")
-    raw = bundle.model.predict_proba(frame[bundle.feature_columns])[:, 1]
-    return bundle.calibrator.predict(raw)
 
 
-def _profit_inputs(frame: pd.DataFrame) -> pd.DataFrame:
-    return frame[PROFIT_INPUT_COLUMNS].apply(pd.to_numeric, errors="coerce")
+def _prepare_scoring_frame(frame: pd.DataFrame, feature_columns: list[str]) -> pd.DataFrame:
+    prepared = frame.copy()
+    numeric_columns = set(feature_columns) & set(ACCEPTED_NUMERIC_RISK_FEATURES)
+    for column in numeric_columns:
+        if column not in prepared.columns:
+            continue
+        if column in {"int_rate", "revol_util"}:
+            prepared[column] = pd.to_numeric(prepared[column].map(parse_percent), errors="coerce")
+        else:
+            prepared[column] = pd.to_numeric(prepared[column], errors="coerce")
+    return apply_numeric_feature_transforms(prepared)
 
 
-def score_frame(frame: pd.DataFrame, bundle: ModelBundle, lgd: float | None = None) -> pd.DataFrame:
-    data = _prepare_frame(frame, bundle)
-    p_default = predict_default(bundle, data)
-    scored = data.copy()
+def _confidence(p_default: pd.Series) -> pd.Series:
+    values = pd.to_numeric(p_default, errors="coerce").astype(float)
+    return (values.sub(0.5).abs() * 2).clip(0, 1)
+
+
+def predict_default(bundle: ModelBundle, frame: pd.DataFrame) -> pd.Series:
+    _validate_bundle(bundle)
+    prepared = _prepare_scoring_frame(frame, bundle.feature_columns)
+    missing = [column for column in bundle.feature_columns if column not in prepared.columns]
+    if missing:
+        raise ValueError(f"missing required scoring fields: {', '.join(missing)}")
+    raw = bundle.model.predict_proba(prepared[bundle.feature_columns])[:, 1]
+    return pd.Series(bundle.calibrator.predict(raw), index=frame.index)
+
+
+def score_frame(frame: pd.DataFrame, bundle: ModelBundle) -> pd.DataFrame:
+    prepared = _prepare_scoring_frame(frame, bundle.feature_columns)
+    p_default = predict_default(bundle, prepared)
+    metadata = bundle.metadata or {}
+    scored = prepared.copy()
     scored["p_default"] = p_default
-    locked_lgd = bundle.policy.get("lgd", DEFAULT_LGD) if lgd is None else lgd
-    good_profit_haircut = float(bundle.policy.get("good_profit_haircut", 1.0))
-    required_return = bundle.policy.get("required_return")
-    scored["lgd"] = locked_lgd
-    scored["good_profit_haircut"] = good_profit_haircut
-    scored["required_return"] = required_return
-    scored["approval_rule"] = _approval_rule(required_return)
-
-    missing_profit = _missing(PROFIT_INPUT_COLUMNS, scored)
-    if missing_profit:
-        scored["decision"] = "review"
-        scored["reason"] = (
-            "risk/review only; profit decision unavailable; missing " + ", ".join(missing_profit)
-        )
-        return scored
-
-    profit_values = _profit_inputs(scored)
-    valid_profit = profit_values.notna().all(axis=1) & (profit_values > 0).all(axis=1)
-    scored["expected_profit"] = pd.NA
-    scored["expected_return"] = pd.NA
-    scored["expected_npv_profit"] = pd.NA
-    scored["annualized_return"] = pd.NA
-    scored["decision"] = "review"
-    scored["reason"] = "risk/review only; invalid profit inputs"
-    if valid_profit.any():
-        valid = scored.loc[valid_profit]
-        ep = expected_profit(
-            valid["p_default"],
-            profit_values.loc[valid_profit, "funded_amnt"],
-            profit_values.loc[valid_profit, "term_months"],
-            profit_values.loc[valid_profit, "installment"],
-            lgd=locked_lgd,
-            good_profit_haircut=good_profit_haircut,
-        )
-        er = expected_return(ep, profit_values.loc[valid_profit, "funded_amnt"])
-        decisions = approve(ep, er, required_return)
-        use_npv = bool(bundle.policy.get("use_npv"))
-        if use_npv:
-            npv = expected_npv_profit(
-                valid["p_default"],
-                profit_values.loc[valid_profit, "funded_amnt"],
-                profit_values.loc[valid_profit, "term_months"],
-                profit_values.loc[valid_profit, "installment"],
-                lgd=locked_lgd,
-                annual_discount_rate=float(bundle.policy.get("annual_discount_rate", 0.08)),
-                servicing_cost_rate=float(bundle.policy.get("servicing_cost_rate", 0.0)),
-                good_profit_haircut=good_profit_haircut,
-            )
-            annualized = npv / profit_values.loc[valid_profit, "funded_amnt"] / (
-                profit_values.loc[valid_profit, "term_months"] / 12.0
-            )
-            scored.loc[valid_profit, "expected_npv_profit"] = npv
-            scored.loc[valid_profit, "annualized_return"] = annualized
-        scored.loc[valid_profit, "expected_profit"] = ep
-        scored.loc[valid_profit, "expected_return"] = er
-        if bundle.model_type != "rejected_style":
-            scored.loc[valid_profit, "decision"] = pd.Series(decisions, index=valid.index).map(
-                {True: "approve", False: "deny"}
-            )
-    if bundle.model_type == "rejected_style":
-        scored.loc[valid_profit, "reason"] = (
-            "limited-field risk estimate; profit is scenario math only, not a rejected-applicant approval"
-        )
-    else:
-        scored.loc[valid_profit, "reason"] = "expected profit policy"
+    scored["p_non_default"] = 1 - pd.to_numeric(p_default, errors="coerce")
+    scored["confidence"] = _confidence(p_default)
+    scored["risk_band"] = _risk_band(p_default, metadata.get("risk_band_thresholds"))
+    scored["model_version"] = metadata.get("model_version")
+    scored["model_type"] = metadata.get("selected_model_type", bundle.model_type)
+    scored["calibration_method"] = metadata.get("calibration_method")
+    scored["scoring_note"] = SCORING_NOTE
     return scored
 
 
-def score_records(records, bundle: ModelBundle, lgd: float | None = None) -> list[dict]:
+def score_records(records, bundle: ModelBundle) -> list[dict]:
     frame = pd.DataFrame(records)
-    scored = score_frame(frame, bundle, lgd=lgd)
+    scored = score_frame(frame, bundle)
     columns = [
         "p_default",
-        "expected_profit",
-        "expected_return",
-        "expected_npv_profit",
-        "annualized_return",
-        "decision",
-        "reason",
-        "lgd",
-        "good_profit_haircut",
-        "required_return",
-        "approval_rule",
+        "p_non_default",
+        "confidence",
+        "risk_band",
+        "model_version",
+        "model_type",
+        "calibration_method",
+        "scoring_note",
     ]
-    result = scored[[c for c in columns if c in scored.columns]].astype(object)
+    result = scored[columns].astype(object)
     result = result.where(pd.notna(result), None)
     return result.to_dict(orient="records")

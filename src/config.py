@@ -6,6 +6,7 @@ ACCEPTED_CSV = ROOT / "accepted_2007_to_2018Q4.csv"
 REJECTED_CSV = ROOT / "rejected_2007_to_2018Q4.csv"
 ARTIFACT_DIR = ROOT / "artifacts"
 REPORT_DIR = ROOT / "reports"
+MODEL_VERSION = "accepted-default-v1"
 
 
 def _path_from_env(name: str, default: Path) -> Path:
@@ -14,31 +15,11 @@ def _path_from_env(name: str, default: Path) -> Path:
 
 
 DEFAULT_ACCEPTED_BUNDLE = _path_from_env("ACCEPTED_MODEL_BUNDLE", ARTIFACT_DIR / "accepted_model.joblib")
-DEFAULT_REJECTED_STYLE_BUNDLE = _path_from_env(
-    "REJECTED_STYLE_MODEL_BUNDLE",
-    ARTIFACT_DIR / "rejected_style_model.joblib",
-)
-DEFAULT_PROFIT_BUNDLE = _path_from_env("PROFIT_MODEL_BUNDLE", ARTIFACT_DIR / "direct_profit_model.joblib")
-
+DEFAULT_FRONTEND_BUNDLE = _path_from_env("FRONTEND_MODEL_BUNDLE", ARTIFACT_DIR / "frontend_model.joblib")
 TARGET = "default"
-PROFIT_TARGET = "realized_profit"
-DEFAULT_LGD = 1.0
-DEFAULT_REQUIRED_RETURN = 0.0
-DEFAULT_TARGET_MODE = "resolved_default"
-DEFAULT_TARGET_HORIZON_MONTHS = 36
-DEFAULT_TARGET_DATE_COLUMNS = {
-    "issue_date_column": "issue_d",
-    "last_payment_date_column": "last_pymnt_d",
-    "loan_status_column": "loan_status",
-}
-TARGET_MODES = ("resolved_default", "default_within_horizon")
-PRODUCT_MODE_POST_PRICING = "post_pricing_investment"
-PRODUCT_MODE_PRE_UNDERWRITING = "pre_underwriting_applicant"
-POST_PRICING_FIELDS = ["int_rate", "grade", "sub_grade", "initial_list_status"]
-PRE_UNDERWRITING_FORBIDDEN_FIELDS = ["grade", "sub_grade", "int_rate", "initial_list_status"]
 EVALUATION_BOOTSTRAP_SAMPLES = 200
 EVALUATION_BOOTSTRAP_RANDOM_STATE = 42
-MIN_PROXY_GROUP_SIZE = 25
+FRONTEND_TOP_FEATURE_COUNT = 5
 
 BAD_STATUSES = {
     "Charged Off",
@@ -57,8 +38,6 @@ UNRESOLVED_STATUSES = {
     "Issued",
     "",
 }
-
-PROFIT_INPUT_COLUMNS = ["funded_amnt", "term_months", "installment"]
 
 ACCEPTED_NUMERIC_RISK_FEATURES = [
     "loan_amnt",
@@ -91,40 +70,18 @@ ACCEPTED_CATEGORICAL_RISK_FEATURES = [
 ]
 ACCEPTED_RISK_FEATURES = ACCEPTED_NUMERIC_RISK_FEATURES + ACCEPTED_CATEGORICAL_RISK_FEATURES
 
-REJECTED_STYLE_NUMERIC_RISK_FEATURES = ["amount_requested", "risk_score", "dti"]
-REJECTED_STYLE_CATEGORICAL_RISK_FEATURES = ["zip_code", "state", "employment_length"]
-REJECTED_STYLE_RISK_FEATURES = (
-    REJECTED_STYLE_NUMERIC_RISK_FEATURES + REJECTED_STYLE_CATEGORICAL_RISK_FEATURES
-)
-
-# Explicit map from accepted-loan columns to rejected-application-style fields.
-# policy_code is mapped for schema/reporting, but is intentionally not a model feature.
-ACCEPTED_TO_REJECTED_FEATURE_MAP = {
-    "loan_amnt": "amount_requested",
-    "issue_d": "application_date",
-    "title": "loan_title",
-    "fico_range_low": "risk_score_low",
-    "fico_range_high": "risk_score_high",
-    "dti": "dti",
-    "zip_code": "zip_code",
-    "addr_state": "state",
-    "emp_length": "employment_length",
-    "policy_code": "policy_code",
+RISK_NUMERIC_LOG_TRANSFORMS = {
+    "loan_amnt",
+    "annual_inc",
+    "revol_bal",
+    "total_acc",
 }
-
-REJECTED_RAW_ALIASES = {
-    "Amount Requested": "amount_requested",
-    "Application Date": "application_date",
-    "Loan Title": "loan_title",
-    "Risk_Score": "risk_score",
-    "Debt-To-Income Ratio": "dti",
-    "Zip Code": "zip_code",
-    "State": "state",
-    "Employment Length": "employment_length",
-    "Policy Code": "policy_code",
+RISK_NUMERIC_CLIP_RANGES = {
+    "dti": (0.0, 100.0),
 }
 
 FORBIDDEN_FEATURE_COLUMNS = {
+    "default",
     "loan_status",
     "total_pymnt",
     "total_pymnt_inv",
@@ -151,6 +108,4 @@ FORBIDDEN_FEATURE_COLUMNS = {
     "settlement_amount",
     "settlement_percentage",
     "settlement_term",
-    "policy_code",
-    *PROFIT_INPUT_COLUMNS,
 }

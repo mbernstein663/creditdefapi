@@ -1,28 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import json
 
 import pandas as pd
 
-from src.artifacts import file_fingerprint, load_model_bundle
-from src.config import (
-    ACCEPTED_CSV,
-    DEFAULT_ACCEPTED_BUNDLE,
-    PROFIT_INPUT_COLUMNS,
-    REPORT_DIR,
-    TARGET,
-)
-from src.calibration import subgroup_calibration_summary
-from src.evaluation import evaluate_probability, evaluate_profit_policy
+from src.artifacts import file_fingerprint, load_model_bundle, save_model_bundle
+from src.config import ACCEPTED_CSV, DEFAULT_ACCEPTED_BUNDLE, REPORT_DIR
+from src.evaluation import generate_evaluation_reports
 from src.models import predict_raw_default
 from src.preprocessing import prepare_accepted_loans
-from src.reporting import generate_report_suite
 
 
 def _read_accepted(path, feature_columns, sample=None):
-    needed = set(feature_columns + PROFIT_INPUT_COLUMNS)
-    needed |= {"id", "term", "loan_status", "issue_d", "total_pymnt"}
+    needed = set(feature_columns) | {"id", "loan_status", "issue_d", "term"}
     return pd.read_csv(path, usecols=lambda col: col in needed, low_memory=False, nrows=sample)
 
 
@@ -44,50 +34,17 @@ def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED
     test_df = accepted.loc[accepted["id"].astype(str).isin(test_ids)].copy()
     if len(test_df) != len(test_ids):
         raise ValueError("source CSV does not contain every saved test split ID")
-    if bundle.calibrator is None:
-        raise ValueError("locked evaluation requires calibrated probabilities")
 
     raw = predict_raw_default(bundle.model, test_df, bundle.feature_columns)
     p_default = bundle.calibrator.predict(raw)
-    result = {
-        "probability": evaluate_probability(bundle, test_df),
-        "subgroup_calibration": subgroup_calibration_summary(test_df, TARGET, p_default),
-        "profit_policy": evaluate_profit_policy(bundle, test_df),
-        "locked_policy": bundle.policy,
-        "artifact_path": str(bundle_path),
-        "selected_candidate": bundle.metadata.get("selected_candidate"),
-        "training_timestamp": bundle.metadata.get("training_timestamp"),
-        "package_versions": bundle.metadata.get("package_versions"),
-        "split_manifest": {k: v for k, v in bundle.metadata.get("split_manifest", {}).items() if k != "test_ids"},
-        "is_smoke_sample": bool(sample or bundle.metadata.get("is_smoke_sample")),
-        "source_fingerprint": actual_source,
-        "test_row_count": int(len(test_df)),
-        "test_default_rate": float(test_df[TARGET].mean()) if len(test_df) else None,
-        "note": "test set is evaluated after loading the locked bundle; no selection happens here",
-    }
-    report_dir = REPORT_DIR / "test" / "smoke" if result["is_smoke_sample"] else REPORT_DIR / "test"
-    report_dir.mkdir(parents=True, exist_ok=True)
-    generate_report_suite(
-        bundle,
-        test_df,
-        p_default,
-        output_dir=report_dir,
-        stage="test",
-        include_sensitivity=False,
-        stage_summary={
-            "row_count": int(len(test_df)),
-            "split_summary": bundle.metadata.get("split_summary", []),
-            "test_default_rate": result["test_default_rate"],
-            "locked_test": True,
-        },
-    )
-    path = report_dir / ("locked_test_metrics_smoke.json" if result["is_smoke_sample"] else "locked_test_metrics.json")
-    path.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
-    return path
+    report_dir = REPORT_DIR / "test" / "smoke" if sample else REPORT_DIR / "test"
+    outputs = generate_evaluation_reports(bundle, test_df, p_default, report_dir, "test")
+    save_model_bundle(bundle, bundle_path)
+    return outputs["metrics_summary"]
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate one locked accepted-loan model on test data.")
+    parser = argparse.ArgumentParser(description="Evaluate the locked accepted-loan bundle on the saved test split.")
     parser.add_argument("--bundle", default=DEFAULT_ACCEPTED_BUNDLE)
     parser.add_argument("--csv", default=ACCEPTED_CSV)
     parser.add_argument("--sample", type=int, default=None)

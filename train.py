@@ -1,412 +1,403 @@
 from __future__ import annotations
 
 import argparse
-import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import TimeSeriesSplit
 
 from src.artifacts import ModelBundle, file_fingerprint, package_versions, save_model_bundle
-from src.calibration import (
-    ProbabilityCalibrator,
-    calibration_summary,
-    save_reliability_plot,
-    subgroup_calibration_summary,
-)
+from src.calibration import ProbabilityCalibrator, calibration_summary
 from src.config import (
     ACCEPTED_CSV,
     ARTIFACT_DIR,
     DEFAULT_ACCEPTED_BUNDLE,
-    DEFAULT_LGD,
-    DEFAULT_TARGET_HORIZON_MONTHS,
-    DEFAULT_TARGET_MODE,
+    DEFAULT_FRONTEND_BUNDLE,
     FORBIDDEN_FEATURE_COLUMNS,
-    PRODUCT_MODE_POST_PRICING,
-    PROFIT_INPUT_COLUMNS,
+    FRONTEND_TOP_FEATURE_COUNT,
+    MODEL_VERSION,
     REPORT_DIR,
-    ROOT,
     TARGET,
 )
+from src.evaluation import generate_evaluation_reports
 from src.models import fit_model, predict_raw_default
-from src.preprocessing import (
-    feature_columns_for_product_mode,
-    prepare_accepted_loans,
-    split_chronological,
-    split_count_report,
-    split_manifest,
-    split_row_count_report,
-    split_summary,
-)
-from src.profit import policy_metrics, policy_sensitivity
-from src.profit import expected_profit, expected_return
-from src.reporting import generate_report_suite
+from src.preprocessing import feature_columns, prepare_accepted_loans, split_chronological, split_manifest, split_summary
 
-
-BASE_REQUIRED_RETURN_CANDIDATES = [0.00, 0.025, 0.05, 0.075, 0.10, 0.125, 0.15, 0.20]
-GOOD_PROFIT_HAIRCUT_CANDIDATES = [0.25, 0.35, 0.50, 0.65, 0.80, 1.00]
 DEFAULT_MODEL_CANDIDATES = ["logistic_balanced", "logistic", "random_forest", "hist_gradient_boosting"]
-
-
-def _read_accepted(path, feature_columns, sample=None, target_mode=DEFAULT_TARGET_MODE):
-    needed = set(feature_columns + PROFIT_INPUT_COLUMNS)
-    needed |= {"id", "term", "loan_status", "issue_d", "last_pymnt_d", "total_pymnt"}
-    if target_mode == "default_within_horizon":
-        needed |= {"issue_d", "last_pymnt_d", "loan_status"}
-    return pd.read_csv(path, usecols=lambda col: col in needed, low_memory=False, nrows=sample)
-
-
-def _write_json(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-
-
-def _repo_path(path):
-    p = Path(path).resolve()
-    try:
-        return str(p.relative_to(ROOT))
-    except ValueError:
-        return str(p)
-
-
-def _repo_fingerprint(fingerprint):
-    out = dict(fingerprint)
-    if out.get("path"):
-        out["path"] = _repo_path(out["path"])
-    return out
+CALIBRATION_METHODS = ["isotonic", "sigmoid"]
 
 
 def _paths(output_path, sample):
     report_dir = REPORT_DIR / "validation" / "smoke" if sample else REPORT_DIR / "validation"
-    output = DEFAULT_ACCEPTED_BUNDLE.with_name("accepted_model_smoke.joblib") if sample else output_path
+    output = DEFAULT_ACCEPTED_BUNDLE.with_name("accepted_model_smoke.joblib") if sample else Path(output_path)
     return output, report_dir
 
 
-def _policy_thresholds(validation_df, p_default, lgd=DEFAULT_LGD, good_profit_haircut: float = 1.0) -> list[float]:
-    inputs = validation_df[PROFIT_INPUT_COLUMNS].apply(pd.to_numeric, errors="coerce")
-    ep = expected_profit(
-        p_default,
-        inputs["funded_amnt"],
-        inputs["term_months"],
-        inputs["installment"],
-        lgd=lgd,
-        good_profit_haircut=good_profit_haircut,
-    )
-    er = pd.Series(expected_return(ep, inputs["funded_amnt"])).replace([np.inf, -np.inf], np.nan).dropna()
-    values = list(BASE_REQUIRED_RETURN_CANDIDATES)
-    if not er.empty:
-        values += [float(er.quantile(q)) for q in (0.70, 0.80, 0.90, 0.95)]
-        values.append(float(er.max()) + 1e-9)
-    return sorted({round(float(v), 12) for v in values if float(v) >= 0})
+def _frontend_output_path(output_path: Path, sample):
+    return DEFAULT_FRONTEND_BUNDLE.with_name("frontend_model_smoke.joblib") if sample else output_path.with_name("frontend_model.joblib")
 
 
-def select_required_return_policy(validation_df, p_default, lgd=DEFAULT_LGD) -> tuple[dict, list[dict]]:
-    rows = []
-    for good_profit_haircut in GOOD_PROFIT_HAIRCUT_CANDIDATES:
-        for threshold in _policy_thresholds(
-            validation_df,
-            p_default,
-            lgd=lgd,
-            good_profit_haircut=good_profit_haircut,
-        ):
-            metrics = policy_metrics(
-                validation_df,
-                p_default,
-                lgd=lgd,
-                required_return=threshold,
-                good_profit_haircut=good_profit_haircut,
-            )
-            rows.append(
-                {
-                    "good_profit_haircut": good_profit_haircut,
-                    "required_return": threshold,
-                    "approval_count": metrics["approval_count"],
-                    "selection_rate": metrics["selection_rate"],
-                    "expected_profit": metrics["expected_profit"],
-                    "expected_return": metrics["expected_return"],
-                    "actual_default_rate": metrics.get("actual_default_rate"),
-                    "total_realized_profit": metrics.get("total_realized_profit", 0.0),
-                    "mean_realized_profit": metrics.get("mean_realized_profit", 0.0),
-                }
-            )
-    eligible = [
-        row
-        for row in rows
-        if row["approval_count"] > 0
-        and row["required_return"] >= 0
-        and row["expected_profit"] >= 0
-        and row["expected_return"] >= 0
-        and row["total_realized_profit"] > 0
-    ]
-    selected = max(
-        eligible or [row for row in rows if row["approval_count"] == 0],
-        key=lambda r: (
-            r["total_realized_profit"],
-            r["expected_profit"],
-            -(r["actual_default_rate"] or 0.0),
-            r["approval_count"],
-        ),
+def _git_commit() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def _read_accepted(path, selected_features, sample=None):
+    needed = set(selected_features) | {"id", "loan_status", "issue_d", "term"}
+    return pd.read_csv(path, usecols=lambda col: col in needed, low_memory=False, nrows=sample)
+
+
+def _candidate_rank(candidate: dict) -> tuple[float, float, float, float, float, float, float, int]:
+    def _as_float(value, default):
+        return float(default if value is None else value)
+
+    metrics = candidate["metrics"]
+    cv_metrics = candidate.get("cv_metrics") or {}
+    deciles = metrics["deciles"]
+    mean_gap = float(pd.DataFrame(deciles)["absolute_calibration_gap"].mean()) if deciles else float("inf")
+    return (
+        mean_gap,
+        _as_float(metrics["brier_score"], float("inf")),
+        _as_float(metrics["log_loss"], float("inf")),
+        _as_float(cv_metrics.get("mean_absolute_calibration_gap"), float("inf")),
+        _as_float(cv_metrics.get("mean_brier_score"), float("inf")),
+        -_as_float(metrics["roc_auc"], float("-inf")),
+        -_as_float(metrics["pr_auc"], float("-inf")),
+        DEFAULT_MODEL_CANDIDATES.index(candidate["model_name"]),
     )
-    policy = {
-        "lgd": lgd,
-        "good_profit_haircut": selected["good_profit_haircut"],
-        "required_return": selected["required_return"],
-        "approval_rule": "expected_return > required_return",
-        "use_npv": False,
-        "annual_discount_rate": 0.08,
-        "servicing_cost_rate": 0.0,
-        "recovery_rate": 0.25,
-        "selection_rule": (
-            "max validation total_realized_profit among non-empty policies with non-negative scenario expected_profit, "
-            "non-negative expected_return, non-negative required_return, and positive realized validation profit; "
-            "tie-break expected_profit, approved default rate, approval count"
-        ),
-        "validation_expected_profit": selected["expected_profit"],
-        "validation_realized_profit": selected["total_realized_profit"],
-        "validation_approval_count": selected["approval_count"],
-        "validation_selection_rate": selected["selection_rate"],
-        "validation_approved_default_rate": selected["actual_default_rate"],
+
+
+def _risk_band_thresholds(p_default) -> dict:
+    values = pd.Series(p_default).astype(float)
+    return {
+        "low_max": round(float(values.quantile(1 / 3)), 6),
+        "medium_max": round(float(values.quantile(2 / 3)), 6),
     }
-    if selected["approval_count"] == 0:
-        policy["profit_warning"] = "no non-empty validation policy passed non-negative scenario EV and positive realized-profit gates"
-    return policy, rows
 
 
-def select_accepted_candidate(train_df, calibration_df, validation_df, feature_columns, product_mode):
-    candidates = []
-    for name in DEFAULT_MODEL_CANDIDATES:
-        model = fit_model(
-            train_df,
-            feature_columns,
-            kind="accepted",
-            candidate_name=name,
-            product_mode=product_mode,
-        )
-        raw_calibration = predict_raw_default(model, calibration_df, feature_columns)
-        calibrator = ProbabilityCalibrator("isotonic").fit(raw_calibration, calibration_df[TARGET])
-        raw_validation = predict_raw_default(model, validation_df, feature_columns)
-        p_validation = calibrator.predict(raw_validation)
-        probability = calibration_summary(validation_df[TARGET], p_validation)
-        policy, policy_candidates = select_required_return_policy(validation_df, p_validation, lgd=DEFAULT_LGD)
-        profit = policy_metrics(
-            validation_df,
-            p_validation,
-            lgd=DEFAULT_LGD,
-            required_return=policy["required_return"],
-            good_profit_haircut=policy["good_profit_haircut"],
-        )
-        candidates.append(
+def _permutation_feature_importance(model, calibrator, frame: pd.DataFrame, selected_features: list[str]) -> list[dict]:
+    baseline_raw = predict_raw_default(model, frame, selected_features)
+    baseline_p = calibrator.predict(baseline_raw)
+    baseline_brier = float(np.mean((pd.Series(baseline_p) - frame[TARGET]) ** 2))
+    rows = []
+    for column in selected_features:
+        permuted = frame.copy()
+        permuted[column] = permuted[column].sample(frac=1, random_state=42).to_numpy()
+        raw = predict_raw_default(model, permuted, selected_features)
+        p_default = calibrator.predict(raw)
+        permuted_brier = float(np.mean((pd.Series(p_default) - frame[TARGET]) ** 2))
+        rows.append(
             {
-                "name": name,
-                "model": model,
-                "calibrator": calibrator,
-                "probability": probability,
-                "selected_policy": policy,
-                "policy_candidates": policy_candidates,
-                "profit_policy": profit,
+                "feature": column,
+                "importance": max(0.0, permuted_brier - baseline_brier),
             }
         )
-    return max(
-        candidates,
-        key=lambda c: (
-            c["profit_policy"].get("total_realized_profit", 0.0),
-            c["profit_policy"]["expected_profit"],
-            -c["probability"]["brier_score"],
-        ),
-    ), candidates
+    return sorted(rows, key=lambda row: row["importance"], reverse=True)
 
 
-def train_accepted_model(
-    csv_path=ACCEPTED_CSV,
-    output_path=DEFAULT_ACCEPTED_BUNDLE,
-    sample=None,
-    target_mode: str = DEFAULT_TARGET_MODE,
-    horizon_months: int = DEFAULT_TARGET_HORIZON_MONTHS,
-    product_mode: str = PRODUCT_MODE_POST_PRICING,
+def _cross_validation_summary(train_df: pd.DataFrame, selected_features: list[str], model_name: str) -> dict:
+    ordered = train_df.sort_values(["issue_dt", "id"] if "id" in train_df.columns else ["issue_dt"]).reset_index(drop=True)
+    if len(ordered) < 8 or ordered["issue_dt"].dropna().nunique() < 4:
+        return {"fold_count": 0, "folds": []}
+
+    n_splits = min(4, max(2, len(ordered) // 10))
+    splitter = TimeSeriesSplit(n_splits=n_splits)
+    fold_rows = []
+    for fold_number, (train_idx, validation_idx) in enumerate(splitter.split(ordered), start=1):
+        fold_train = ordered.iloc[train_idx]
+        fold_validation = ordered.iloc[validation_idx]
+        if fold_train[TARGET].nunique() < 2 or fold_validation[TARGET].nunique() < 2:
+            continue
+        model = fit_model(fold_train, selected_features, model_name)
+        raw_validation = predict_raw_default(model, fold_validation, selected_features)
+        summary = calibration_summary(fold_validation[TARGET], raw_validation)
+        fold_rows.append(
+            {
+                "fold": fold_number,
+                "train_rows": int(len(fold_train)),
+                "validation_rows": int(len(fold_validation)),
+                "roc_auc": summary["roc_auc"],
+                "pr_auc": summary["pr_auc"],
+                "brier_score": summary["brier_score"],
+                "log_loss": summary["log_loss"],
+                "mean_predicted_default": summary["mean_predicted_default"],
+                "actual_default_rate": summary["actual_default_rate"],
+                "mean_absolute_calibration_gap": float(
+                    pd.DataFrame(summary["deciles"])["absolute_calibration_gap"].mean()
+                )
+                if summary["deciles"]
+                else None,
+            }
+        )
+    if not fold_rows:
+        return {"fold_count": 0, "folds": []}
+
+    fold_frame = pd.DataFrame(fold_rows)
+    summary = {
+        "fold_count": int(len(fold_rows)),
+        "folds": fold_rows,
+        "mean_roc_auc": float(fold_frame["roc_auc"].mean()) if fold_frame["roc_auc"].notna().any() else None,
+        "mean_pr_auc": float(fold_frame["pr_auc"].mean()) if fold_frame["pr_auc"].notna().any() else None,
+        "mean_brier_score": float(fold_frame["brier_score"].mean()),
+        "mean_log_loss": float(fold_frame["log_loss"].mean()) if fold_frame["log_loss"].notna().any() else None,
+        "mean_absolute_calibration_gap": float(fold_frame["mean_absolute_calibration_gap"].mean())
+        if fold_frame["mean_absolute_calibration_gap"].notna().any()
+        else None,
+        "mean_predicted_default": float(fold_frame["mean_predicted_default"].mean()),
+        "mean_actual_default_rate": float(fold_frame["actual_default_rate"].mean()),
+    }
+    return summary
+
+
+def select_candidate(train_df, calibration_df, validation_df, selected_features):
+    candidates = []
+    for model_name in DEFAULT_MODEL_CANDIDATES:
+        cv_metrics = _cross_validation_summary(train_df, selected_features, model_name)
+        model = fit_model(train_df, selected_features, model_name)
+        raw_calibration = predict_raw_default(model, calibration_df, selected_features)
+        raw_validation = predict_raw_default(model, validation_df, selected_features)
+        for calibration_method in CALIBRATION_METHODS:
+            calibrator = ProbabilityCalibrator(calibration_method).fit(raw_calibration, calibration_df[TARGET])
+            p_validation = calibrator.predict(raw_validation)
+            candidates.append(
+                {
+                    "model_name": model_name,
+                    "calibration_method": calibration_method,
+                    "model": model,
+                    "calibrator": calibrator,
+                    "p_validation": p_validation,
+                    "metrics": calibration_summary(validation_df[TARGET], p_validation),
+                    "cv_metrics": cv_metrics,
+                }
+            )
+    selected = min(candidates, key=_candidate_rank)
+    return selected, candidates
+
+
+def _build_bundle(
+    selected,
+    selected_features,
+    target_summary,
+    source_fingerprint,
+    manifest,
+    split_details,
+    validation_row_count,
+    forbidden_columns,
+    versions,
+    git_commit,
+    training_timestamp,
+    frontend_fields: list[str] | None = None,
+    feature_importance: list[dict] | None = None,
+    cross_validation_summary: dict | None = None,
+    model_version: str = MODEL_VERSION,
 ):
+    selected_metrics = selected["metrics"]
+    return ModelBundle(
+        model=selected["model"],
+        calibrator=selected["calibrator"],
+        feature_columns=list(selected_features),
+        model_type=f"calibrated_{selected['model_name']}",
+        required_input_schema={
+            "schema_version": 1,
+            "required_fields": list(selected_features),
+            "forbidden_fields": forbidden_columns,
+        },
+        metadata={
+            "bundle_schema_version": 1,
+            "model_version": model_version,
+            "target_name": TARGET,
+            "target_definition": "resolved accepted/funded loan default target",
+            "good_statuses": sorted(target_summary["good_statuses"]),
+            "bad_statuses": sorted(target_summary["bad_statuses"]),
+            "dropped_statuses": sorted(target_summary["dropped_statuses"]),
+            "target_summary": target_summary,
+            "source_fingerprint": source_fingerprint,
+            "split_manifest": manifest,
+            "split_summary": split_details,
+            "split_date_boundaries": manifest["date_ranges"],
+            "split_row_counts": manifest["row_counts"],
+            "split_default_rates": manifest["default_rates"],
+            "selected_model_name": selected["model_name"],
+            "selected_model_type": f"calibrated_{selected['model_name']}",
+            "calibration_method": selected["calibration_method"],
+            "validation_metrics_summary": {
+                "rows": int(validation_row_count),
+                "observed_default_rate": selected_metrics["actual_default_rate"],
+                "mean_predicted_default_rate": selected_metrics["mean_predicted_default"],
+                "roc_auc": selected_metrics["roc_auc"],
+                "pr_auc": selected_metrics["pr_auc"],
+                "brier_score": selected_metrics["brier_score"],
+                "log_loss": selected_metrics["log_loss"],
+                "selected_model": selected["model_name"],
+                "calibration_method": selected["calibration_method"],
+            },
+            "cross_validation_summary": cross_validation_summary or {},
+            "risk_band_thresholds": _risk_band_thresholds(selected["p_validation"]),
+            "feature_columns": list(selected_features),
+            "forbidden_feature_columns": forbidden_columns,
+            "feature_importance": feature_importance or [],
+            "frontend_fields": frontend_fields or [],
+            "limitations": [
+                "accepted-loan selection bias",
+                "rejected applications are unlabeled and excluded from supervised default modeling",
+                "not validated for production underwriting or fair-lending use",
+            ],
+            "rejected_data_handling": "Rejected applications are not labeled as defaults or non-defaults and are excluded from supervised training, calibration, validation, and test evaluation.",
+            "package_versions": versions,
+            "git_commit": git_commit,
+            "training_timestamp": training_timestamp,
+        },
+    )
+
+
+def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUNDLE, sample=None):
     output_path, report_dir = _paths(output_path, sample)
+    frontend_output_path = _frontend_output_path(output_path, sample)
     report_dir.mkdir(parents=True, exist_ok=True)
+    selected_features = feature_columns()
     source_fingerprint = file_fingerprint(csv_path)
     training_timestamp = datetime.now(timezone.utc).isoformat()
     versions = package_versions()
-    feature_columns = feature_columns_for_product_mode(product_mode)
+    git_commit = _git_commit()
+
     accepted, target_summary = prepare_accepted_loans(
-        _read_accepted(csv_path, feature_columns, sample=sample, target_mode=target_mode),
-        target_mode=target_mode,
-        target_config={"horizon_months": horizon_months},
+        _read_accepted(csv_path, selected_features, sample=sample),
         return_summary=True,
     )
     splits = split_chronological(accepted)
     manifest = split_manifest(splits)
-    split_row_count_report(splits).to_csv(report_dir / "supervised_row_counts_by_split_year.csv", index=False)
-    split_count_report({k: v for k, v in splits.items() if k != "test"}).to_csv(
-        report_dir / "non_test_label_counts_by_split_year.csv", index=False
-    )
+    split_details = split_summary(splits)
 
     train_df = splits["train"].dropna(subset=[TARGET])
     calibration_df = splits["calibration"].dropna(subset=[TARGET])
     validation_df = splits["validation"].dropna(subset=[TARGET])
-
-    selected, candidates = select_accepted_candidate(
-        train_df,
-        calibration_df,
-        validation_df,
-        feature_columns,
-        product_mode,
-    )
-    raw_selected = predict_raw_default(selected["model"], validation_df, feature_columns)
-    p_selected = selected["calibrator"].predict(raw_selected)
-    probability_summary = calibration_summary(validation_df[TARGET], p_selected)
-    bundle = ModelBundle(
-        model=selected["model"],
-        calibrator=selected["calibrator"],
-        feature_columns=list(feature_columns),
-        model_type="accepted",
-        policy=selected["selected_policy"],
-        required_input_schema={
-            "risk_features": list(feature_columns),
-            "profit_inputs": list(PROFIT_INPUT_COLUMNS),
-        },
-        metadata={
-            "target": TARGET,
-            "target_mode": target_mode,
-            "target_definition": "resolved funded accepted-loan default target"
-            if target_mode == "resolved_default"
-            else f"default within {horizon_months} months using issue_d and last_pymnt_d as conservative observation proxies",
-            "target_limitation": "predicts eventual resolved default among accepted/funded loans, not all applicant risk",
-            "target_summary": target_summary,
-            "fixed_horizon_extension": "conservative fixed-horizon labeling uses issue_d plus last_pymnt_d and excludes censored rows",
-            "is_smoke_sample": bool(sample),
-            "sample_rows_requested": sample,
-            "source_fingerprint": _repo_fingerprint(source_fingerprint),
-            "resolved_row_count": int(len(accepted)),
-            "split_manifest": manifest,
-            "split_summary": split_summary(splits),
-            "selected_candidate": selected["name"],
-            "selection_rule": (
-                "select calibrated model, good_profit_haircut, and required_return on validation total_realized_profit "
-                "after non-negative scenario-EV gates; tie-break expected_profit and brier_score"
-            ),
-            "target_good_statuses": "see src.config.GOOD_STATUSES",
-            "target_bad_statuses": "see src.config.BAD_STATUSES",
-            "forbidden_feature_columns": sorted(FORBIDDEN_FEATURE_COLUMNS),
-            "product_mode": product_mode,
-            "scoring_moment": "post-pricing/post-underwriting only",
-            "random_state": 42,
-            "package_versions": versions,
-            "split_rule": "chronological 60/15/15/10 by issue_d after dropping unresolved loans",
-            "rejected_data_handling": "rejected applications are unlabeled and excluded",
-            "calibration_method": "isotonic",
-            "training_timestamp": training_timestamp,
-        },
-    )
-    saved = save_model_bundle(bundle, output_path)
-    validation_report = {
-        "is_smoke_sample": bool(sample),
-        "sample_rows_requested": sample,
-        "artifact_path": str(saved),
-        "training_timestamp": training_timestamp,
-        "package_versions": versions,
-        "source_fingerprint": source_fingerprint,
-        "resolved_row_count": int(len(accepted)),
-        "target_summary": target_summary,
-        "split_manifest": {k: v for k, v in manifest.items() if k != "test_ids"},
-        "split_summary": split_summary(splits),
-        "feature_columns": list(feature_columns),
-        "selected_candidate": selected["name"],
-        "selection_rule": bundle.metadata["selection_rule"],
-        "selected_policy": bundle.policy,
-        "selected_subgroup_calibration": subgroup_calibration_summary(validation_df, TARGET, p_selected),
-        "selected_policy_sensitivity": policy_sensitivity(
-            validation_df,
-            p_selected,
-            good_profit_haircuts=(selected["selected_policy"]["good_profit_haircut"],),
-        ),
-        "candidates": [
+    selected, candidates = select_candidate(train_df, calibration_df, validation_df, selected_features)
+    forbidden_columns = sorted(FORBIDDEN_FEATURE_COLUMNS)
+    cross_validation_summary = {
+        "selected_model_name": selected["model_name"],
+        "selected_calibration_method": selected["calibration_method"],
+        "candidate_summaries": [
             {
-                "name": c["name"],
-                "probability": c["probability"],
-                "selected_policy": c["selected_policy"],
-                "profit_policy": c["profit_policy"],
+                "model_name": candidate["model_name"],
+                "calibration_method": candidate["calibration_method"],
+                **candidate["cv_metrics"],
             }
-            for c in candidates
+            for candidate in candidates
         ],
     }
-    _write_json(report_dir / "accepted_validation_metrics.json", validation_report)
+    feature_importance = _permutation_feature_importance(
+        selected["model"],
+        selected["calibrator"],
+        validation_df,
+        selected_features,
+    )
+    frontend_fields = [row["feature"] for row in feature_importance[:FRONTEND_TOP_FEATURE_COUNT]]
+    bundle = _build_bundle(
+        selected,
+        selected_features,
+        target_summary,
+        source_fingerprint,
+        manifest,
+        split_details,
+        len(validation_df),
+        forbidden_columns,
+        versions,
+        git_commit,
+        training_timestamp,
+        frontend_fields=frontend_fields,
+        feature_importance=feature_importance,
+        cross_validation_summary=cross_validation_summary,
+    )
+    saved = save_model_bundle(bundle, output_path)
+    generate_evaluation_reports(bundle, validation_df, selected["p_validation"], report_dir, "validation")
+    pd.DataFrame(feature_importance).to_csv(report_dir / "feature_importance.csv", index=False)
     pd.DataFrame(
         [
             {
-                "model_name": c["name"],
-                **row,
-                "selected_model": c["name"] == selected["name"],
-                "selected": c["name"] == selected["name"]
-                and row["required_return"] == c["selected_policy"]["required_return"]
-                and row["good_profit_haircut"] == c["selected_policy"]["good_profit_haircut"],
+                "model_name": candidate["model_name"],
+                "calibration_method": candidate["calibration_method"],
+                **candidate["cv_metrics"],
             }
-            for c in candidates
-            for row in c["policy_candidates"]
+            for candidate in candidates
         ]
-    ).to_csv(report_dir / "policy_selection_validation.csv", index=False)
-    generate_report_suite(
-        bundle,
-        validation_df,
-        p_selected,
-        output_dir=report_dir,
-        stage="validation",
-        include_sensitivity=True,
-        stage_summary={
-            "row_count": int(len(accepted)),
-            "split_summary": split_summary(splits),
-            "roc_auc": probability_summary.get("roc_auc"),
-            "pr_auc": probability_summary.get("pr_auc"),
-            "brier_score": probability_summary.get("brier_score"),
-            "mean_predicted_default": probability_summary.get("mean_predicted_default"),
-            "actual_default_rate": probability_summary.get("actual_default_rate"),
-        },
+    ).to_csv(report_dir / "cross_validation_summary.csv", index=False)
+
+    frontend_selected, frontend_candidates = select_candidate(train_df, calibration_df, validation_df, frontend_fields)
+    frontend_cross_validation_summary = {
+        "selected_model_name": frontend_selected["model_name"],
+        "selected_calibration_method": frontend_selected["calibration_method"],
+        "candidate_summaries": [
+            {
+                "model_name": candidate["model_name"],
+                "calibration_method": candidate["calibration_method"],
+                **candidate["cv_metrics"],
+            }
+            for candidate in frontend_candidates
+        ],
+    }
+    frontend_bundle = _build_bundle(
+        frontend_selected,
+        frontend_fields,
+        target_summary,
+        source_fingerprint,
+        manifest,
+        split_details,
+        len(validation_df),
+        forbidden_columns,
+        versions,
+        git_commit,
+        training_timestamp,
+        frontend_fields=frontend_fields,
+        feature_importance=feature_importance,
+        cross_validation_summary=frontend_cross_validation_summary,
+        model_version=f"{MODEL_VERSION}-frontend",
     )
-    _write_json(
-        ROOT / "docs" / "accepted_model_card.json",
-        {
-            "model_type": bundle.model_type,
-            "target": bundle.metadata["target_definition"],
-            "target_limitation": bundle.metadata["target_limitation"],
-            "scoring_moment": bundle.metadata["scoring_moment"],
-            "artifact_path": _repo_path(saved),
-            "feature_columns": bundle.feature_columns,
-            "policy": bundle.policy,
-            "selected_candidate": selected["name"],
-            "selection_rule": bundle.metadata["selection_rule"],
-            "split_summary": validation_report["split_summary"],
-            "source_fingerprint": _repo_fingerprint(source_fingerprint),
-            "training_timestamp": training_timestamp,
-            "package_versions": versions,
-        },
-    )
-    save_reliability_plot(validation_df[TARGET], p_selected, report_dir / "accepted_reliability.png")
+    save_model_bundle(frontend_bundle, frontend_output_path)
+
+    comparison_rows = []
+    for candidate in candidates:
+        metrics = candidate["metrics"]
+        comparison_rows.append(
+            {
+                "model_name": candidate["model_name"],
+                "calibration_method": candidate["calibration_method"],
+                "roc_auc": metrics["roc_auc"],
+                "pr_auc": metrics["pr_auc"],
+                "brier_score": metrics["brier_score"],
+                "log_loss": metrics["log_loss"],
+                "mean_predicted_default_rate": metrics["mean_predicted_default"],
+                "observed_default_rate": metrics["actual_default_rate"],
+                "cv_mean_brier_score": candidate["cv_metrics"].get("mean_brier_score"),
+                "cv_mean_log_loss": candidate["cv_metrics"].get("mean_log_loss"),
+                "cv_mean_absolute_calibration_gap": candidate["cv_metrics"].get("mean_absolute_calibration_gap"),
+                "cv_fold_count": candidate["cv_metrics"].get("fold_count"),
+                "selected": candidate["model_name"] == selected["model_name"]
+                and candidate["calibration_method"] == selected["calibration_method"],
+            }
+        )
+    pd.DataFrame(comparison_rows).to_csv(report_dir / "model_comparison.csv", index=False)
     return saved
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train accepted-loan default/profit model.")
+    parser = argparse.ArgumentParser(description="Train an accepted-loan calibrated default-risk model.")
     parser.add_argument("--csv", default=ACCEPTED_CSV)
     parser.add_argument("--output", default=DEFAULT_ACCEPTED_BUNDLE)
     parser.add_argument("--sample", type=int, default=None)
-    parser.add_argument("--target-mode", default=DEFAULT_TARGET_MODE, choices=["resolved_default", "default_within_horizon"])
-    parser.add_argument("--horizon-months", type=int, default=DEFAULT_TARGET_HORIZON_MONTHS)
-    parser.add_argument("--product-mode", default=PRODUCT_MODE_POST_PRICING, choices=[PRODUCT_MODE_POST_PRICING, "pre_underwriting_applicant"])
     args = parser.parse_args()
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    print(
-        train_accepted_model(
-            args.csv,
-            args.output,
-            sample=args.sample,
-            target_mode=args.target_mode,
-            horizon_months=args.horizon_months,
-            product_mode=args.product_mode,
-        )
-    )
+    print(train_accepted_model(args.csv, args.output, sample=args.sample))
 
 
 if __name__ == "__main__":

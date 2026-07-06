@@ -3,33 +3,31 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import pandas as pd
+import httpx
 
-from src.artifacts import load_model_bundle
-from src.config import DEFAULT_ACCEPTED_BUNDLE
-from src.scorer import score_frame
+DEFAULT_API_URL = "http://127.0.0.1:8000"
 
 
-def score_csv(input_csv, output_csv, bundle_path=DEFAULT_ACCEPTED_BUNDLE, chunksize=50_000):
-    bundle = load_model_bundle(bundle_path)
+def score_csv(input_csv, output_csv, api_url=DEFAULT_API_URL):
     output = Path(output_csv)
     output.parent.mkdir(parents=True, exist_ok=True)
-    first = True
-    for chunk in pd.read_csv(input_csv, chunksize=chunksize):
-        scored = score_frame(chunk, bundle)
-        scored.to_csv(output, mode="w" if first else "a", index=False, header=first)
-        first = False
+    with Path(input_csv).open("rb") as handle, httpx.Client(timeout=120.0) as client:
+        response = client.post(
+            f"{api_url.rstrip('/')}/score-batch",
+            files={"file": (Path(input_csv).name, handle, "text/csv")},
+        )
+    response.raise_for_status()
+    output.write_bytes(response.content)
     return output
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Batch score loans with a saved bundle.")
+    parser = argparse.ArgumentParser(description="Batch score loans by uploading a CSV to the FastAPI batch endpoint.")
     parser.add_argument("input_csv")
     parser.add_argument("output_csv")
-    parser.add_argument("--bundle", default=DEFAULT_ACCEPTED_BUNDLE)
-    parser.add_argument("--chunksize", type=int, default=50_000)
+    parser.add_argument("--api-url", default=DEFAULT_API_URL)
     args = parser.parse_args()
-    print(score_csv(args.input_csv, args.output_csv, args.bundle, args.chunksize))
+    print(score_csv(args.input_csv, args.output_csv, args.api_url))
 
 
 if __name__ == "__main__":

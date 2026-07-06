@@ -18,7 +18,7 @@ matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.metrics import average_precision_score, log_loss, roc_auc_score
 
 
 @dataclass
@@ -69,6 +69,7 @@ def calibration_summary(y_true, p_default, bins: int = 10) -> dict:
             mean_predicted_default=("predicted", "mean"),
             observed_default_rate=("actual", "mean"),
         )
+        .assign(absolute_calibration_gap=lambda x: (x["mean_predicted_default"] - x["observed_default_rate"]).abs())
         .to_dict(orient="records")
     )
     actual = frame["actual"].astype(int)
@@ -79,6 +80,7 @@ def calibration_summary(y_true, p_default, bins: int = 10) -> dict:
         "roc_auc": float(roc_auc) if roc_auc is not None else None,
         "pr_auc": float(pr_auc) if pr_auc is not None else None,
         "brier_score": float(np.mean((predicted - actual) ** 2)),
+        "log_loss": float(log_loss(actual, predicted, labels=[0, 1])) if actual.nunique() == 2 else None,
         "mean_predicted_default": float(predicted.mean()),
         "actual_default_rate": float(actual.mean()),
         "deciles": deciles,

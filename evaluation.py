@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.evaluation_report import main
+from src.evaluation import main
 
 
 if __name__ == "__main__":

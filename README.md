@@ -1,190 +1,235 @@
-# Credit Risk Scoring Pipeline
+# Calibrated Credit Default Risk API
 
-This repo is an accepted/funded-loan risk and profit scoring system. It is not a production underwriting engine.
+## Overview
 
-It supports two label modes for accepted loans with observed repayment outcomes:
+This project predicts calibrated probability of default for accepted/funded LendingClub loans. It is built as a clean portfolio repo around leakage-controlled modeling, chronological validation, saved model artifacts, API-backed scoring, batch scoring, Dockerized serving, and automated tests.
 
-- `resolved_default`
-- `default_within_horizon`
+## What the project does
 
-It also supports two scoring/product modes:
+The active workflow trains default-risk models on accepted/funded loans with resolved repayment outcomes, calibrates probabilities on a dedicated calibration split, selects the final model on validation metrics, saves a versioned bundle, and serves that bundle through FastAPI and batch scoring.
 
-- `post_pricing_investment`
-- `pre_underwriting_applicant`
+Outputs are calibrated `p_default` values and a display-only `risk_band`. The project demonstrates ML pipeline discipline, calibration reporting, artifact-based serving, and test coverage.
 
-Rejected applications are not treated as observed defaults or non-defaults. They are review-only unless real repayment outcomes exist.
+The repo also trains a separate reduced-feature frontend model on exactly the top five ranked application-time attributes from the main validation feature-importance pass. That frontend model is served through its own FastAPI scoring endpoint.
 
-## Scope
+## What the project does not claim
 
-- Accepted/funded loan default modeling
-- Probability calibration
-- Expected-profit policy logic
-- Batch scoring and FastAPI scoring from saved artifacts
-- Compact model and evaluation reports
-- Limited-field risk scoring for rejected-style inputs
+- It is not production underwriting.
+- It is not fair-lending validated.
+- It is not rejected-applicant outcome prediction.
+- It is not a profit model or lending policy engine.
 
-## Target Modes
+Rejected applications are not labeled as defaults or non-defaults because their repayment outcomes are not observed.
 
-`resolved_default` is the default mode. It uses resolved good/bad loan statuses only.
+## Data and target definition
 
-`default_within_horizon` is conservative:
+The supervised target is `default`.
 
-- labels default only when a bad status appears within the chosen horizon
-- labels non-default only when there is enough observation time
-- excludes censored rows instead of guessing
+Bad outcome:
 
-The default horizon is 36 months.
+- `Charged Off`
+- `Default`
+- the resolved `Does not meet the credit policy. Status:Charged Off` variant
 
-## Product Modes
+Good outcome:
 
-`post_pricing_investment`
+- `Fully Paid`
+- the resolved `Does not meet the credit policy. Status:Fully Paid` variant
 
-- current accepted/funded loan scoring path
-- may use lender-generated pricing fields such as `grade`, `sub_grade`, `int_rate`, and `initial_list_status`
-- this is the current default path in the repo
+Dropped from supervised training and evaluation:
 
-`pre_underwriting_applicant`
+- `Current`
+- `In Grace Period`
+- late or active statuses
+- `Issued`
+- blank or unresolved statuses
 
-- excludes lender-generated pricing fields
-- risk/review only unless the needed economic inputs are available
-- do not claim it is a complete underwriting engine
+Only accepted/funded loans with resolved outcomes are used for supervised training, calibration, validation, and locked test evaluation.
 
-## Profit Logic
+## Modeling approach
 
-The decision rule is expected-profit based:
+The repo trains simple scikit-learn classifiers for default-risk prediction, including logistic regression, random forest, and histogram gradient boosting. Feature handling is limited to application or underwriting-time fields only. Post-origination repayment or outcome-derived columns are explicitly excluded from model features.
 
-```text
-Expected Profit_i =
-(1 - p_default_i) × [good_profit_haircut × ((installment_i × term_months_i) - funded_amnt_i)]
-+ p_default_i × [-(LGD × funded_amnt_i)]
-```
+## Calibration and validation design
 
-Expected return is:
+Splits are chronological by `issue_d`:
 
-```text
-expected_return = expected_profit / funded_amnt
-```
+1. `train`
+2. `calibration`
+3. `validation`
+4. `test`
 
-Optional NPV-style economics are supported behind config/policy metadata, but the simple EV formula remains the default.
+The training split fits preprocessing and candidate models. The calibration split fits post-hoc calibrators only. The validation split selects model family, calibration method, and display cutoffs such as risk bands. The locked test split is evaluated only after the final bundle has been saved.
 
-Training selects a conservative `good_profit_haircut` and `required_return` on validation data only. The haircut is a simple, documented scenario assumption for the fact that many fully paid loans do not pay the full scheduled term; it is not a calibrated cash-profit model. Candidate policies must have non-negative scenario expected profit, non-negative expected return, non-negative required return, and positive realized validation profit. A loan is approved when:
+Model selection is calibration-first, using:
 
-```text
-expected_return > required_return
-```
+- Brier score
+- log loss
+- ROC AUC
+- PR AUC
+- mean predicted default rate versus observed default rate
+- decile calibration gaps
+- risk-decile lift
 
-If every non-empty validation policy loses realized money, training may lock a reject-all policy and record that warning in the model artifact.
+## Reports generated
 
-Realized validation profit is backtest evidence. Expected-profit dollars are scenario estimates used for screening, not exact profit forecasts.
+Validation reports are written to `reports/validation/` and locked test reports to `reports/test/`.
 
-## Reports
+Each stage writes:
 
-Training and locked evaluation generate compact outputs under `reports/`:
-
+- `metrics_summary.json`
+- `calibration_deciles.csv`
+- `risk_decile_lift.csv`
+- `calibration_by_issue_year.csv`
+- `calibration_by_grade.csv` when `grade` is in the feature set
+- `roc_curve.csv`
+- `pr_curve.csv`
+- `reliability_plot.png`
+- `roc_curve.png`
+- `pr_curve.png`
 - `model_card.md`
-- `evaluation_summary.json`
-- `calibration_table.csv`
-- `policy_summary.csv`
-- `sensitivity_summary.csv`
-- `cohort_backtest.csv`
-- `bootstrap_intervals.csv`
-- `proxy_risk_diagnostics.csv`
-- `fairness_caveat.md`
-- `policy_selection_validation.csv`
 
-These are summary artifacts, not compliance claims.
+## API usage
 
-## How To Run
+Run the API locally:
 
-Install:
-
-```powershell
-python -m pip install -r requirements.txt
-python -m pip install -e .[dev]
+```bash
+uvicorn api:app --reload
 ```
 
-Preprocess, train, calibrate, and select policy for the accepted-loan model:
+Health check:
 
-```powershell
-python train.py
+```bash
+curl http://localhost:8000/health
 ```
 
-Fixed-horizon accepted-loan training:
+Example score request:
 
-```powershell
-python train.py --target-mode default_within_horizon --horizon-months 36
+```bash
+curl -X POST http://localhost:8000/score \
+  -H "Content-Type: application/json" \
+  -d '{
+    "loan_amnt": 10000,
+    "int_rate": 12.5,
+    "annual_inc": 78000,
+    "dti": 15.2,
+    "fico_range_low": 690,
+    "fico_range_high": 694,
+    "delinq_2yrs": 0,
+    "inq_last_6mths": 1,
+    "open_acc": 10,
+    "pub_rec": 0,
+    "revol_bal": 12000,
+    "revol_util": 44.1,
+    "total_acc": 24,
+    "mort_acc": 1,
+    "acc_open_past_24mths": 3,
+    "pub_rec_bankruptcies": 0,
+    "grade": "C",
+    "sub_grade": "C2",
+    "emp_length": "10+ years",
+    "home_ownership": "MORTGAGE",
+    "verification_status": "Verified",
+    "purpose": "debt_consolidation",
+    "addr_state": "CA",
+    "application_type": "Individual",
+    "initial_list_status": "w"
+  }'
 ```
 
-Train the limited-field review model:
+Expected response shape:
 
-```powershell
-python train_rejected_style.py
+```json
+{
+  "p_default": 0.184,
+  "risk_band": "medium",
+  "model_version": "accepted-default-v1",
+  "model_type": "calibrated_hist_gradient_boosting",
+  "calibration_method": "isotonic",
+  "scoring_note": "Probability is calibrated for accepted/funded LendingClub-style loans with resolved historical outcomes."
+}
 ```
 
-Train the direct-profit challenger:
+Reduced frontend scoring:
 
-```powershell
-python train_profit.py
+```bash
+curl http://localhost:8000/frontend-config
+curl -X POST http://localhost:8000/score-frontend \
+  -H "Content-Type: application/json" \
+  -d '{
+    "loan_amnt": 10000,
+    "int_rate": 12.5,
+    "annual_inc": 78000,
+    "dti": 15.2,
+    "fico_range_low": 690
+  }'
 ```
 
-Generate compact validation evaluation reports:
+## Batch scoring usage
 
-```powershell
-python evaluation.py
+```bash
+python batch.py input.csv output.csv --api-url http://127.0.0.1:8000
 ```
 
-Locked evaluation of the accepted-loan bundle:
+The CLI uploads the CSV to the FastAPI batch endpoint, validates the data shape and required attributes, and writes a scored CSV that preserves row order. The response CSV includes the original columns plus:
 
-```powershell
-python evaluate_locked.py
+- `p_default`
+- `p_non_default`
+- `confidence`
+- `risk_band`
+- `model_version`
+- `model_type`
+- `calibration_method`
+
+## Docker usage
+
+Build and run:
+
+```bash
+docker build -t credit-default-api .
+docker run --rm -p 8000:8000 -v ./artifacts:/app/artifacts credit-default-api
 ```
 
-Locked evaluation of the direct-profit challenger:
+Then check:
 
-```powershell
-python evaluate_profit_locked.py
+```bash
+curl http://localhost:8000/health
 ```
 
-Launch the API:
+## Tests
 
-```powershell
-python -m uvicorn api:app --reload
-```
+Run:
 
-Batch scoring:
-
-```powershell
-python batch.py input.csv output.csv --bundle artifacts\accepted_model.joblib
-```
-
-Tests:
-
-```powershell
+```bash
 python -m pytest
 ```
 
-## Artifact Locations
+The suite covers target construction, leakage prevention, split discipline, calibration outputs, artifact round-tripping, API scoring, batch scoring, and repo guardrails against reintroducing business-decision scope.
 
-Large data and model artifacts should live outside version control:
+## Repo structure
 
-- `data/`
-- `artifacts/`
-- `models/`
+```text
+api.py
+batch.py
+evaluate_locked.py
+evaluation.py
+train.py
+src/
+  artifacts.py
+  calibration.py
+  config.py
+  evaluation.py
+  models.py
+  preprocessing.py
+  scorer.py
+  schemas.py
+tests/
+Dockerfile
+```
 
-Compact report outputs live under `reports/` and are intended to be easy to inspect and, when appropriate, commit.
+## Limitations
 
-## What Not To Claim
-
-- Do not claim production underwriting.
-- Do not claim rejected-applicant outcome prediction.
-- Do not claim fair-lending validation.
-- Do not claim selection-bias is solved.
-- Do not claim locked test results were used to choose the model or policy.
-- Do not claim profit estimates are exact. They are scenario-based and depend on the stated LGD and policy assumptions.
-- Do not claim the fixed-horizon target is a perfect default-time model. It uses conservative observation proxies.
-
-## Notes
-
-- Accepted-loan training and evaluation use resolved repayment outcomes only.
-- Rejected-style scoring is review-only unless a row actually has repayment outcomes.
-- The repo keeps the current accepted-loan pipeline intact while adding the new horizon, reporting, and diagnostic paths behind config and metadata.
+- The training population is accepted/funded loans only, so accepted-loan selection bias remains.
+- Rejected applications are excluded from supervised default modeling because outcomes are not observed.
+- The repo demonstrates disciplined modeling and serving, not production deployment controls.
+- The repo does not include fairness, monitoring, drift management, or operational risk controls needed for real lending use.

@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from batch import score_csv
 from src.artifacts import ModelBundle, load_model_bundle, save_model_bundle
-from src.config import ACCEPTED_RISK_FEATURES, REJECTED_STYLE_RISK_FEATURES
+from src.config import ACCEPTED_RISK_FEATURES
 from src.scorer import score_records
 
 
@@ -18,19 +19,44 @@ class IdentityCalibrator:
         return raw
 
 
-def accepted_bundle(policy=None):
+def accepted_bundle(metadata=None, feature_columns=None):
+    feature_columns = list(feature_columns or ACCEPTED_RISK_FEATURES)
     return ModelBundle(
         DummyModel(),
         IdentityCalibrator(),
-        list(ACCEPTED_RISK_FEATURES),
-        "accepted",
-        policy=policy or {"lgd": 1.0, "required_return": None},
-        required_input_schema={"risk_features": list(ACCEPTED_RISK_FEATURES)},
+        feature_columns,
+        "calibrated_logistic",
+        metadata=metadata
+        or {
+            "bundle_schema_version": 1,
+            "model_version": "accepted-default-v1",
+            "selected_model_type": "calibrated_logistic",
+            "selected_model_name": "logistic",
+            "calibration_method": "isotonic",
+            "risk_band_thresholds": {"low_max": 0.08, "medium_max": 0.18},
+            "source_fingerprint": {"sha256": "abc", "size_bytes": 1},
+            "split_manifest": {"test_ids": ["1"]},
+            "split_summary": [],
+            "target_definition": "resolved accepted/funded loan default target",
+            "forbidden_feature_columns": ["loan_status"],
+            "frontend_fields": ["loan_amnt", "int_rate", "annual_inc", "dti", "fico_range_low"],
+            "feature_importance": [
+                {"feature": "loan_amnt", "importance": 0.03},
+                {"feature": "int_rate", "importance": 0.02},
+                {"feature": "annual_inc", "importance": 0.01},
+                {"feature": "dti", "importance": 0.009},
+                {"feature": "fico_range_low", "importance": 0.008},
+            ],
+            "training_timestamp": "2026-07-06T00:00:00+00:00",
+            "package_versions": {"python": "3.12"},
+        },
+        required_input_schema={"schema_version": 1, "required_fields": feature_columns},
     )
 
 
 def accepted_row(**overrides):
     row = {
+        "id": "1",
         "loan_amnt": 1000,
         "int_rate": 10,
         "annual_inc": 50000,
@@ -56,9 +82,6 @@ def accepted_row(**overrides):
         "addr_state": "NY",
         "application_type": "Individual",
         "initial_list_status": "w",
-        "funded_amnt": 1000,
-        "term_months": 12,
-        "installment": 100,
     }
     row.update(overrides)
     return row
@@ -66,130 +89,68 @@ def accepted_row(**overrides):
 
 def test_saved_model_bundle_loads_successfully(tmp_path):
     path = tmp_path / "bundle.joblib"
-    bundle = ModelBundle(DummyModel(), IdentityCalibrator(), ["loan_amnt"], "accepted")
+    bundle = accepted_bundle()
 
     save_model_bundle(bundle, path)
     loaded = load_model_bundle(path)
 
-    assert loaded.feature_columns == ["loan_amnt"]
-    assert loaded.model_type == "accepted"
+    assert loaded.feature_columns == list(ACCEPTED_RISK_FEATURES)
+    assert loaded.required_input_schema["schema_version"] == 1
+    assert loaded.metadata["model_version"] == "accepted-default-v1"
 
 
-def test_batch_scoring_uses_saved_artifact_without_refitting(tmp_path):
-    bundle_path = tmp_path / "bundle.joblib"
+def test_batch_scoring_posts_csv_to_api_and_writes_response(monkeypatch, tmp_path):
     input_csv = tmp_path / "input.csv"
     output_csv = tmp_path / "output.csv"
-    bundle = accepted_bundle()
-    save_model_bundle(bundle, bundle_path)
-    pd.DataFrame([accepted_row(), accepted_row(loan_amnt=2000, funded_amnt=2000, installment=190)]).to_csv(
-        input_csv, index=False
-    )
+    pd.DataFrame([accepted_row(), accepted_row(id="2", loan_amnt=2000)]).to_csv(input_csv, index=False)
 
-    score_csv(input_csv, output_csv, bundle_path=bundle_path, chunksize=1)
+    class DummyResponse:
+        def __init__(self, content):
+            self.content = content
+
+        def raise_for_status(self):
+            return None
+
+    class DummyClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, files):
+            assert url.endswith("/score-batch")
+            return DummyResponse(b"id,p_default\n1,0.1\n2,0.1\n")
+
+    monkeypatch.setattr("batch.httpx.Client", DummyClient)
+    score_csv(input_csv, output_csv, api_url="http://localhost:8000")
     out = pd.read_csv(output_csv)
 
     assert len(out) == 2
-    assert {"p_default", "expected_profit", "expected_return", "decision", "lgd", "approval_rule"} <= set(
-        out.columns
-    )
+    assert ["id", "p_default"] == list(out.columns)
 
 
-def test_rejected_style_inputs_score_only_when_required_fields_present():
-    bundle = ModelBundle(
-        DummyModel(),
-        IdentityCalibrator(),
-        list(REJECTED_STYLE_RISK_FEATURES),
-        "rejected_style",
-    )
-    row = {
-        "Amount Requested": 1000,
-        "Risk_Score": 700,
-        "Debt-To-Income Ratio": "10%",
-        "Zip Code": "123xx",
-        "State": "NY",
-        "Employment Length": "4 years",
-    }
-
-    scored = score_records([row], bundle)[0]
+def test_score_records_return_risk_only_schema():
+    scored = score_records([accepted_row()], accepted_bundle())[0]
 
     assert scored["p_default"] == 0.10
-    assert scored["decision"] == "review"
-    assert "profit decision unavailable" in scored["reason"]
+    assert scored["p_non_default"] == 0.90
+    assert scored["confidence"] == 0.8
+    assert scored["risk_band"] == "medium"
+    assert "scoring_note" in scored
+    assert "decision" not in scored
 
 
-def test_scoring_uses_bundle_lgd_by_default():
-    bundle = accepted_bundle(policy={"lgd": 0.5, "required_return": None})
-    scored = score_records(
-        [accepted_row()],
-        bundle,
-    )[0]
+def test_frontend_subset_bundle_can_score():
+    subset = ["loan_amnt", "int_rate", "annual_inc", "dti", "fico_range_low"]
+    scored = score_records([{key: accepted_row()[key] for key in subset}], accepted_bundle(feature_columns=subset))[0]
 
-    assert scored["expected_profit"] == 130
-    assert scored["lgd"] == 0.5
-    assert scored["approval_rule"] == "expected_profit > 0"
+    assert scored["risk_band"] == "medium"
 
 
-def test_scoring_uses_bundle_good_profit_haircut():
-    bundle = accepted_bundle(policy={"lgd": 1.0, "required_return": None, "good_profit_haircut": 0.5})
-    scored = score_records([accepted_row()], bundle)[0]
-
-    assert scored["expected_profit"] == -10
-    assert scored["good_profit_haircut"] == 0.5
-    assert scored["decision"] == "deny"
-
-
-def test_invalid_profit_inputs_return_review_per_row():
-    bundle = accepted_bundle()
-    scored = score_records(
-        [
-            accepted_row(funded_amnt=0),
-            accepted_row(),
-        ],
-        bundle,
-    )
-
-    assert scored[0]["decision"] == "review"
-    assert "invalid profit inputs" in scored[0]["reason"]
-    assert scored[1]["decision"] == "approve"
-    assert scored[1]["expected_profit"] == 80
-
-
-def test_required_return_policy_uses_expected_return_rule():
-    bundle = accepted_bundle(policy={"lgd": 1.0, "required_return": 0.08})
-
-    scored = score_records([accepted_row()], bundle)[0]
-
-    assert scored["decision"] == "deny"
-    assert scored["approval_rule"] == "expected_return > required_return"
-
-
-def test_rejected_style_profit_inputs_remain_review_only():
-    bundle = ModelBundle(
-        DummyModel(),
-        IdentityCalibrator(),
-        list(REJECTED_STYLE_RISK_FEATURES),
-        "rejected_style",
-        policy={"lgd": 1.0, "required_return": None},
-        required_input_schema={"risk_features": list(REJECTED_STYLE_RISK_FEATURES)},
-    )
-
-    scored = score_records(
-        [
-            {
-                "amount_requested": 1000,
-                "risk_score": 700,
-                "dti": 10,
-                "zip_code": "123xx",
-                "state": "NY",
-                "employment_length": "4 years",
-                "funded_amnt": 1000,
-                "term_months": 12,
-                "installment": 100,
-            }
-        ],
-        bundle,
-    )[0]
-
-    assert scored["expected_profit"] == 80
-    assert scored["decision"] == "review"
-    assert "scenario math" in scored["reason"]
+def test_missing_fields_fail_clearly():
+    with pytest.raises(ValueError, match="missing required scoring fields"):
+        score_records([{"loan_amnt": 1000}], accepted_bundle())
