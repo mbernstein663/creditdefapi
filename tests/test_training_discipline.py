@@ -6,6 +6,7 @@ import pytest
 import evaluate_locked
 import train
 from src.artifacts import file_fingerprint, load_model_bundle
+from src.config import load_training_config
 
 
 def _training_frame(rows=40):
@@ -56,7 +57,7 @@ def test_sample_training_uses_smoke_artifact_and_report_paths():
     assert report_dir.name == "smoke"
 
 
-def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, monkeypatch):
+def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, monkeypatch, capsys):
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
     _training_frame().to_csv(csv_path, index=False)
@@ -72,6 +73,56 @@ def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, 
     assert bundle.metadata["cross_validation_summary"]["selected_model_name"] == bundle.metadata["selected_model_name"]
     assert (tmp_path / "reports" / "validation" / "metrics_summary.json").exists()
     assert (tmp_path / "reports" / "validation" / "cross_validation_summary.csv").exists()
+    out = capsys.readouterr().out
+    assert "best model:" in out
+    assert "saved best model:" in out
+
+
+def test_training_config_controls_models_and_cv(tmp_path, monkeypatch):
+    csv_path = tmp_path / "accepted.csv"
+    config_path = tmp_path / "config.yaml"
+    bundle_path = tmp_path / "bundle.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    config_path.write_text(
+        "\n".join(
+            [
+                "training:",
+                "  cross_validation: false",
+                "  models:",
+                "    logistic regression: false",
+                "    logistic balanced: true",
+                "    random forest: false",
+                "  calibration_methods:",
+                "    isotonic: true",
+                "    sigmoid: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+
+    loaded = load_training_config(config_path)
+    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, config_path=config_path)
+    bundle = load_model_bundle(saved)
+
+    assert bundle.metadata["selected_model_name"] == "logistic_balanced"
+    assert bundle.metadata["cross_validation_summary"]["enabled"] is False
+    assert len(bundle.metadata["cross_validation_summary"]["candidate_summaries"]) == 1
+    assert loaded["models"] == ["logistic_balanced"]
+    assert loaded["calibration_methods"] == ["isotonic"]
+
+
+def test_validation_only_mode_writes_comparison_without_bundle(tmp_path, monkeypatch):
+    csv_path = tmp_path / "accepted.csv"
+    bundle_path = tmp_path / "bundle.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+
+    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, validation_only=True)
+
+    assert saved == bundle_path
+    assert bundle_path.exists()
+    assert (tmp_path / "reports" / "validation" / "model_comparison.csv").exists()
 
 
 def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monkeypatch):

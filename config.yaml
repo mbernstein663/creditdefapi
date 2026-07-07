@@ -1,0 +1,11 @@
+training:
+  cross_validation: false
+  selected_model: histogram gradient boosting
+  models:
+    logistic regression: true
+    logistic balanced: true
+    random forest: true
+    histogram gradient boosting: true
+  calibration_methods:
+    isotonic: true
+    sigmoid: false

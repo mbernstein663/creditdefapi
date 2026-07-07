@@ -10,6 +10,16 @@ from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 from .config import ACCEPTED_CATEGORICAL_RISK_FEATURES, ACCEPTED_NUMERIC_RISK_FEATURES, TARGET
 from .preprocessing import ensure_no_forbidden_features
 
+"""
+Sets other preprocessing schema (OHE, column clearing, ordinality, median imputing):
+- different schema for tree based models and standard binary classification
+
+Defines models + schema and fits with fit_model():
+- logreg
+- balanced logreg
+- hist boosted trees
+- random forest
+"""
 
 def _one_hot_encoder(sparse=True):
     try:

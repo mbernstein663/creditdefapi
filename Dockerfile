@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY api.py batch.py evaluate_locked.py evaluation.py train.py README.md ./
+COPY config.yaml api.py batch.py evaluate_locked.py evaluation.py train.py README.md ./
 COPY frontend ./frontend
 COPY src ./src
 

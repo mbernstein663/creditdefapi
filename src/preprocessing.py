@@ -18,7 +18,7 @@ from .config import (
     UNRESOLVED_STATUSES,
 )
 
-
+# parse percentages as numeric
 def parse_percent(value):
     if pd.isna(value):
         return pd.NA
@@ -26,20 +26,20 @@ def parse_percent(value):
         value = value.strip().replace("%", "")
     return pd.to_numeric(value, errors="coerce")
 
-
+# parse months
 def parse_term_months(value):
     if pd.isna(value):
         return pd.NA
     match = re.search(r"\d+", str(value))
     return int(match.group(0)) if match else pd.NA
 
-
+# parse dates
 def parse_date(value):
     if pd.isna(value):
         return pd.NaT
     return pd.to_datetime(value, format="%b-%Y", errors="coerce")
 
-
+# add clipping and log transform to columns
 def apply_numeric_feature_transforms(df: pd.DataFrame) -> pd.DataFrame:
     transformed = df.copy()
     for column, (lower, upper) in RISK_NUMERIC_CLIP_RANGES.items():
@@ -51,7 +51,7 @@ def apply_numeric_feature_transforms(df: pd.DataFrame) -> pd.DataFrame:
             transformed[column] = np.log1p(values)
     return transformed
 
-
+# construct binary default target based on config-specified default status 
 def construct_target(df: pd.DataFrame, return_summary: bool = False) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
     if "loan_status" not in df.columns:
         raise ValueError("accepted loan data must include loan_status")
@@ -81,6 +81,7 @@ def construct_target(df: pd.DataFrame, return_summary: bool = False) -> pd.DataF
     return out
 
 
+# use prev. defined parsers to prepare datetime columns, numeric transformations, and target
 def prepare_accepted_loans(df: pd.DataFrame, return_summary: bool = False) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
     prepared, summary = construct_target(df, return_summary=True)
     if "term" in prepared.columns and "term_months" not in prepared.columns:
@@ -105,17 +106,18 @@ def prepare_accepted_loans(df: pd.DataFrame, return_summary: bool = False) -> pd
     prepared.attrs["target_summary"] = summary
     return prepared
 
-
+# returns list of feature columns
 def feature_columns() -> list[str]:
     return ACCEPTED_NUMERIC_RISK_FEATURES + ACCEPTED_CATEGORICAL_RISK_FEATURES
 
-
+# ensures no disallowed features according to config
 def ensure_no_forbidden_features(feature_columns: Iterable[str]) -> None:
     forbidden = sorted(set(feature_columns) & set(FORBIDDEN_FEATURE_COLUMNS))
     if forbidden:
         raise ValueError(f"forbidden model features: {', '.join(forbidden)}")
 
 
+# defines chronological TCVT split of 60-15-15-10 by validating + ordering dates and assigning split rows
 def split_chronological(
     df: pd.DataFrame,
     date_col: str = "issue_dt",
@@ -154,6 +156,7 @@ def split_chronological(
     return {name: ordered.loc[indexes].copy() for name, indexes in rows_by_split.items()}
 
 
+# metadata report of split
 def split_manifest(splits: dict[str, pd.DataFrame]) -> dict:
     manifest = {"row_counts": {}, "date_ranges": {}, "default_rates": {}}
     for name, frame in splits.items():
@@ -170,7 +173,7 @@ def split_manifest(splits: dict[str, pd.DataFrame]) -> dict:
             manifest["test_ids"] = frame["id"].astype(str).tolist()
     return manifest
 
-
+# returns summary of split results, row-by-row
 def split_summary(splits: dict[str, pd.DataFrame]) -> list[dict]:
     rows = []
     for split, frame in splits.items():
@@ -185,7 +188,7 @@ def split_summary(splits: dict[str, pd.DataFrame]) -> list[dict]:
         )
     return rows
 
-
+# more detailed year-by-year report
 def split_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
     rows = []
     for split, frame in splits.items():
@@ -205,15 +208,16 @@ def split_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def split_row_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    rows = []
-    for split, frame in splits.items():
-        grouped = frame.groupby("issue_year", dropna=False).size()
-        for issue_year, count in grouped.items():
-            rows.append({"split": split, "issue_year": issue_year, "rows": int(count)})
-    return pd.DataFrame(rows)
+# def split_row_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
+#     rows = []
+#     for split, frame in splits.items():
+#         grouped = frame.groupby("issue_year", dropna=False).size()
+#         for issue_year, count in grouped.items():
+#             rows.append({"split": split, "issue_year": issue_year, "rows": int(count)})
+#     return pd.DataFrame(rows)
 
 
+# standardizes column names
 def normalize_rejected_input(df: pd.DataFrame) -> pd.DataFrame:
     renamed = df.rename(
         columns={

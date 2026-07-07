@@ -4,7 +4,10 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
+"""
+- defines which schema classes are optional and what makes valid input for proper API response.
+- also defines what fields the API returns from scorer.py
+"""
 class AcceptedScoreRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

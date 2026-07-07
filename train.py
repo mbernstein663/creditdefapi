@@ -16,19 +16,20 @@ from src.config import (
     ARTIFACT_DIR,
     DEFAULT_ACCEPTED_BUNDLE,
     DEFAULT_FRONTEND_BUNDLE,
+    DEFAULT_CALIBRATION_METHODS,
+    DEFAULT_TRAINING_MODELS,
     FORBIDDEN_FEATURE_COLUMNS,
     FRONTEND_TOP_FEATURE_COUNT,
     MODEL_VERSION,
+    DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE,
     REPORT_DIR,
+    load_training_config,
     TARGET,
 )
 from src.evaluation import generate_evaluation_reports
 from src.models import fit_model, predict_raw_default
-from src.preprocessing import feature_columns, prepare_accepted_loans, split_chronological, split_manifest, split_summary
-
-DEFAULT_MODEL_CANDIDATES = ["logistic_balanced", "logistic", "random_forest", "hist_gradient_boosting"]
-CALIBRATION_METHODS = ["isotonic", "sigmoid"]
-
+from src.preprocessing import feature_columns
+from preprocessing import load_preprocessed_accepted_loans, preprocess_accepted_loans, save_preprocessed_accepted_loans
 
 def _paths(output_path, sample):
     report_dir = REPORT_DIR / "validation" / "smoke" if sample else REPORT_DIR / "validation"
@@ -38,6 +39,18 @@ def _paths(output_path, sample):
 
 def _frontend_output_path(output_path: Path, sample):
     return DEFAULT_FRONTEND_BUNDLE.with_name("frontend_model_smoke.joblib") if sample else output_path.with_name("frontend_model.joblib")
+
+
+def _load_or_build_preprocessed(csv_path, sample, selected_features):
+    try:
+        cached = load_preprocessed_accepted_loans(DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
+        if cached.source_fingerprint == file_fingerprint(csv_path):
+            return cached
+    except Exception:
+        pass
+    built = preprocess_accepted_loans(csv_path, sample=sample, selected_features=selected_features)
+    save_preprocessed_accepted_loans(built, DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
+    return built
 
 
 def _git_commit() -> str | None:
@@ -53,12 +66,7 @@ def _git_commit() -> str | None:
         return None
 
 
-def _read_accepted(path, selected_features, sample=None):
-    needed = set(selected_features) | {"id", "loan_status", "issue_d", "term"}
-    return pd.read_csv(path, usecols=lambda col: col in needed, low_memory=False, nrows=sample)
-
-
-def _candidate_rank(candidate: dict) -> tuple[float, float, float, float, float, float, float, int]:
+def _candidate_rank(candidate: dict, model_candidates: list[str]) -> tuple[float, float, float, float, float, float, float, int]:
     def _as_float(value, default):
         return float(default if value is None else value)
 
@@ -74,7 +82,7 @@ def _candidate_rank(candidate: dict) -> tuple[float, float, float, float, float,
         _as_float(cv_metrics.get("mean_brier_score"), float("inf")),
         -_as_float(metrics["roc_auc"], float("-inf")),
         -_as_float(metrics["pr_auc"], float("-inf")),
-        DEFAULT_MODEL_CANDIDATES.index(candidate["model_name"]),
+        model_candidates.index(candidate["model_name"]),
     )
 
 
@@ -160,14 +168,39 @@ def _cross_validation_summary(train_df: pd.DataFrame, selected_features: list[st
     return summary
 
 
-def select_candidate(train_df, calibration_df, validation_df, selected_features):
+def _print_validation_summary(candidates: list[dict], selected: dict) -> None:
+    comparison = pd.DataFrame(_candidate_comparison_rows(candidates, selected)).sort_values(["brier_score", "log_loss"])
+    print(
+        "\n".join(
+            [
+                f"best model: {selected['model_name']} + {selected['calibration_method']}",
+                f"validation summary: {selected['metrics']['actual_default_rate']:.4f} observed default rate, "
+                f"{selected['metrics']['mean_predicted_default']:.4f} mean predicted default",
+                comparison.to_string(index=False),
+            ]
+        )
+    )
+
+
+def select_candidate(
+    train_df,
+    calibration_df,
+    validation_df,
+    selected_features,
+    model_candidates: list[str] | None = None,
+    calibration_methods: list[str] | None = None,
+    include_cv: bool = True,
+    selected_model_name: str | None = None,
+):
+    model_candidates = list(model_candidates or DEFAULT_TRAINING_MODELS)
+    calibration_methods = list(calibration_methods or DEFAULT_CALIBRATION_METHODS)
     candidates = []
-    for model_name in DEFAULT_MODEL_CANDIDATES:
-        cv_metrics = _cross_validation_summary(train_df, selected_features, model_name)
+    for model_name in model_candidates:
+        cv_metrics = _cross_validation_summary(train_df, selected_features, model_name) if include_cv else {}
         model = fit_model(train_df, selected_features, model_name)
         raw_calibration = predict_raw_default(model, calibration_df, selected_features)
         raw_validation = predict_raw_default(model, validation_df, selected_features)
-        for calibration_method in CALIBRATION_METHODS:
+        for calibration_method in calibration_methods:
             calibrator = ProbabilityCalibrator(calibration_method).fit(raw_calibration, calibration_df[TARGET])
             p_validation = calibrator.predict(raw_validation)
             candidates.append(
@@ -181,8 +214,53 @@ def select_candidate(train_df, calibration_df, validation_df, selected_features)
                     "cv_metrics": cv_metrics,
                 }
             )
-    selected = min(candidates, key=_candidate_rank)
+    selectable = [candidate for candidate in candidates if selected_model_name in {None, candidate["model_name"]}]
+    selected = min(selectable, key=lambda candidate: _candidate_rank(candidate, model_candidates))
     return selected, candidates
+
+
+def _candidate_comparison_rows(candidates: list[dict], selected: dict | None = None) -> list[dict]:
+    rows = []
+    for candidate in candidates:
+        metrics = candidate["metrics"]
+        row = {
+            "model_name": candidate["model_name"],
+            "calibration_method": candidate["calibration_method"],
+            "roc_auc": metrics["roc_auc"],
+            "pr_auc": metrics["pr_auc"],
+            "brier_score": metrics["brier_score"],
+            "log_loss": metrics["log_loss"],
+            "mean_predicted_default_rate": metrics["mean_predicted_default"],
+            "observed_default_rate": metrics["actual_default_rate"],
+            "cv_mean_brier_score": candidate["cv_metrics"].get("mean_brier_score"),
+            "cv_mean_log_loss": candidate["cv_metrics"].get("mean_log_loss"),
+            "cv_mean_absolute_calibration_gap": candidate["cv_metrics"].get("mean_absolute_calibration_gap"),
+            "cv_fold_count": candidate["cv_metrics"].get("fold_count"),
+        }
+        if selected is not None:
+            row["selected"] = (
+                candidate["model_name"] == selected["model_name"]
+                and candidate["calibration_method"] == selected["calibration_method"]
+            )
+        rows.append(row)
+    return rows
+
+
+def _display_validation_rows(candidates: list[dict], selected: dict) -> list[dict]:
+    return [
+        {
+            "model": row["model_name"],
+            "calibration": row["calibration_method"],
+            "roc_auc": row["roc_auc"],
+            "pr_auc": row["pr_auc"],
+            "brier": row["brier_score"],
+            "log_loss": row["log_loss"],
+            "mean_predicted_default": row["mean_predicted_default_rate"],
+            "observed_default_rate": row["observed_default_rate"],
+            "selected": row["selected"],
+        }
+        for row in _candidate_comparison_rows(candidates, selected)
+    ]
 
 
 def _build_bundle(
@@ -261,48 +339,125 @@ def _build_bundle(
     )
 
 
-def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUNDLE, sample=None):
+def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUNDLE, sample=None, validation_only=False, config_path=None):
     output_path, report_dir = _paths(output_path, sample)
     frontend_output_path = _frontend_output_path(output_path, sample)
     report_dir.mkdir(parents=True, exist_ok=True)
+    training_config = load_training_config(config_path)
+    model_candidates = training_config["models"]
+    selected_model_name = training_config["selected_model"]
+    calibration_methods = training_config["calibration_methods"]
+    include_cv = training_config["cross_validation"]
     selected_features = feature_columns()
-    source_fingerprint = file_fingerprint(csv_path)
     training_timestamp = datetime.now(timezone.utc).isoformat()
     versions = package_versions()
     git_commit = _git_commit()
 
-    accepted, target_summary = prepare_accepted_loans(
-        _read_accepted(csv_path, selected_features, sample=sample),
-        return_summary=True,
-    )
-    splits = split_chronological(accepted)
-    manifest = split_manifest(splits)
-    split_details = split_summary(splits)
+    preprocessing = _load_or_build_preprocessed(csv_path, sample, selected_features)
+    source_fingerprint = preprocessing.source_fingerprint
+    target_summary = preprocessing.target_summary
+    splits = preprocessing.splits
+    manifest = preprocessing.manifest
+    split_details = preprocessing.split_summary
 
     train_df = splits["train"].dropna(subset=[TARGET])
     calibration_df = splits["calibration"].dropna(subset=[TARGET])
     validation_df = splits["validation"].dropna(subset=[TARGET])
-    selected, candidates = select_candidate(train_df, calibration_df, validation_df, selected_features)
+    selected, candidates = select_candidate(
+        train_df,
+        calibration_df,
+        validation_df,
+        selected_features,
+        model_candidates=model_candidates,
+        calibration_methods=calibration_methods,
+        include_cv=include_cv,
+        selected_model_name=selected_model_name,
+    )
     forbidden_columns = sorted(FORBIDDEN_FEATURE_COLUMNS)
+    pd.DataFrame(_candidate_comparison_rows(candidates, selected)).to_csv(report_dir / "model_comparison.csv", index=False)
+    pd.DataFrame(_display_validation_rows(candidates, selected)).to_csv(
+        report_dir / "model_validation_results.csv",
+        index=False,
+    )
+
     cross_validation_summary = {
+        "enabled": include_cv,
         "selected_model_name": selected["model_name"],
         "selected_calibration_method": selected["calibration_method"],
-        "candidate_summaries": [
+        "candidate_summaries": [],
+    }
+    feature_importance = []
+    frontend_fields = []
+    if selected is not None and not validation_only:
+        cross_validation_summary["candidate_summaries"] = [
             {
                 "model_name": candidate["model_name"],
                 "calibration_method": candidate["calibration_method"],
                 **candidate["cv_metrics"],
             }
             for candidate in candidates
-        ],
-    }
-    feature_importance = _permutation_feature_importance(
-        selected["model"],
-        selected["calibrator"],
-        validation_df,
-        selected_features,
-    )
-    frontend_fields = [row["feature"] for row in feature_importance[:FRONTEND_TOP_FEATURE_COUNT]]
+        ]
+        feature_importance = _permutation_feature_importance(
+            selected["model"],
+            selected["calibrator"],
+            validation_df,
+            selected_features,
+        )
+        frontend_fields = [row["feature"] for row in feature_importance[:FRONTEND_TOP_FEATURE_COUNT]]
+        pd.DataFrame(feature_importance).to_csv(report_dir / "feature_importance.csv", index=False)
+        pd.DataFrame(
+            [
+                {
+                    "model_name": candidate["model_name"],
+                    "calibration_method": candidate["calibration_method"],
+                    **candidate["cv_metrics"],
+                }
+                for candidate in candidates
+            ]
+        ).to_csv(report_dir / "cross_validation_summary.csv", index=False)
+
+        frontend_selected, frontend_candidates = select_candidate(
+            train_df,
+            calibration_df,
+            validation_df,
+            frontend_fields,
+            model_candidates=model_candidates,
+            calibration_methods=calibration_methods,
+            include_cv=include_cv,
+            selected_model_name=selected_model_name,
+        )
+        frontend_cross_validation_summary = {
+            "enabled": include_cv,
+            "selected_model_name": frontend_selected["model_name"],
+            "selected_calibration_method": frontend_selected["calibration_method"],
+            "candidate_summaries": [
+                {
+                    "model_name": candidate["model_name"],
+                    "calibration_method": candidate["calibration_method"],
+                    **candidate["cv_metrics"],
+                }
+                for candidate in frontend_candidates
+            ],
+        }
+        frontend_bundle = _build_bundle(
+            frontend_selected,
+            frontend_fields,
+            target_summary,
+            source_fingerprint,
+            manifest,
+            split_details,
+            len(validation_df),
+            forbidden_columns,
+            versions,
+            git_commit,
+            training_timestamp,
+            frontend_fields=frontend_fields,
+            feature_importance=feature_importance,
+            cross_validation_summary=frontend_cross_validation_summary,
+            model_version=f"{MODEL_VERSION}-frontend",
+        )
+        save_model_bundle(frontend_bundle, frontend_output_path)
+
     bundle = _build_bundle(
         selected,
         selected_features,
@@ -321,72 +476,8 @@ def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUN
     )
     saved = save_model_bundle(bundle, output_path)
     generate_evaluation_reports(bundle, validation_df, selected["p_validation"], report_dir, "validation")
-    pd.DataFrame(feature_importance).to_csv(report_dir / "feature_importance.csv", index=False)
-    pd.DataFrame(
-        [
-            {
-                "model_name": candidate["model_name"],
-                "calibration_method": candidate["calibration_method"],
-                **candidate["cv_metrics"],
-            }
-            for candidate in candidates
-        ]
-    ).to_csv(report_dir / "cross_validation_summary.csv", index=False)
-
-    frontend_selected, frontend_candidates = select_candidate(train_df, calibration_df, validation_df, frontend_fields)
-    frontend_cross_validation_summary = {
-        "selected_model_name": frontend_selected["model_name"],
-        "selected_calibration_method": frontend_selected["calibration_method"],
-        "candidate_summaries": [
-            {
-                "model_name": candidate["model_name"],
-                "calibration_method": candidate["calibration_method"],
-                **candidate["cv_metrics"],
-            }
-            for candidate in frontend_candidates
-        ],
-    }
-    frontend_bundle = _build_bundle(
-        frontend_selected,
-        frontend_fields,
-        target_summary,
-        source_fingerprint,
-        manifest,
-        split_details,
-        len(validation_df),
-        forbidden_columns,
-        versions,
-        git_commit,
-        training_timestamp,
-        frontend_fields=frontend_fields,
-        feature_importance=feature_importance,
-        cross_validation_summary=frontend_cross_validation_summary,
-        model_version=f"{MODEL_VERSION}-frontend",
-    )
-    save_model_bundle(frontend_bundle, frontend_output_path)
-
-    comparison_rows = []
-    for candidate in candidates:
-        metrics = candidate["metrics"]
-        comparison_rows.append(
-            {
-                "model_name": candidate["model_name"],
-                "calibration_method": candidate["calibration_method"],
-                "roc_auc": metrics["roc_auc"],
-                "pr_auc": metrics["pr_auc"],
-                "brier_score": metrics["brier_score"],
-                "log_loss": metrics["log_loss"],
-                "mean_predicted_default_rate": metrics["mean_predicted_default"],
-                "observed_default_rate": metrics["actual_default_rate"],
-                "cv_mean_brier_score": candidate["cv_metrics"].get("mean_brier_score"),
-                "cv_mean_log_loss": candidate["cv_metrics"].get("mean_log_loss"),
-                "cv_mean_absolute_calibration_gap": candidate["cv_metrics"].get("mean_absolute_calibration_gap"),
-                "cv_fold_count": candidate["cv_metrics"].get("fold_count"),
-                "selected": candidate["model_name"] == selected["model_name"]
-                and candidate["calibration_method"] == selected["calibration_method"],
-            }
-        )
-    pd.DataFrame(comparison_rows).to_csv(report_dir / "model_comparison.csv", index=False)
+    _print_validation_summary(candidates, selected)
+    print(f"saved best model: {selected['model_name']} + {selected['calibration_method']} -> {saved}")
     return saved
 
 
@@ -395,9 +486,11 @@ def main():
     parser.add_argument("--csv", default=ACCEPTED_CSV)
     parser.add_argument("--output", default=DEFAULT_ACCEPTED_BUNDLE)
     parser.add_argument("--sample", type=int, default=None)
+    parser.add_argument("--validation-only", action="store_true")
+    parser.add_argument("--config", default=None)
     args = parser.parse_args()
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    print(train_accepted_model(args.csv, args.output, sample=args.sample))
+    print(train_accepted_model(args.csv, args.output, sample=args.sample, validation_only=args.validation_only, config_path=args.config))
 
 
 if __name__ == "__main__":

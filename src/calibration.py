@@ -21,10 +21,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, log_loss, roc_auc_score
 
 
-@dataclass
+@dataclass # decorator, modifies the class by adding dataclass
 class ProbabilityCalibrator:
     method: str = "isotonic"
     model: Any | None = None
+
+    """
+    Applies class calibration 
+    -> ingests raw probabilities and adjusts them to better match reality in calibration set
+    """
 
     def fit(self, raw_probability, y):
         raw = np.asarray(raw_probability, dtype=float)
@@ -50,7 +55,7 @@ class ProbabilityCalibrator:
             return self.model.predict_proba(raw.reshape(-1, 1))[:, 1]
         return np.clip(self.model.predict(raw), 0, 1)
 
-
+# Returns calibration metrics across bins as dictionary
 def calibration_summary(y_true, p_default, bins: int = 10) -> dict:
     frame = pd.DataFrame({"actual": y_true, "predicted": p_default}).dropna()
     if frame.empty:
@@ -87,6 +92,8 @@ def calibration_summary(y_true, p_default, bins: int = 10) -> dict:
     }
 
 
+
+# takes default prediction probabilities and actual default rates to return dictionary of subgroups
 def subgroup_calibration_summary(frame: pd.DataFrame, y_col: str, p_default) -> dict[str, list[dict]]:
     data = pd.DataFrame({"actual": frame[y_col], "predicted": p_default}, index=frame.index).dropna()
     out: dict[str, list[dict]] = {}
@@ -120,7 +127,7 @@ def subgroup_calibration_summary(frame: pd.DataFrame, y_col: str, p_default) -> 
         summarize(f"{amount_col}_band", bands)
     return out
 
-
+# build plot of decile calibration across subgroups
 def save_reliability_plot(y_true, p_default, path, bins: int = 10):
     summary = calibration_summary(y_true, p_default, bins=bins)
     deciles = pd.DataFrame(summary["deciles"])

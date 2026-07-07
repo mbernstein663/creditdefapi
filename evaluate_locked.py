@@ -2,18 +2,11 @@ from __future__ import annotations
 
 import argparse
 
-import pandas as pd
-
 from src.artifacts import file_fingerprint, load_model_bundle, save_model_bundle
-from src.config import ACCEPTED_CSV, DEFAULT_ACCEPTED_BUNDLE, REPORT_DIR
+from src.config import ACCEPTED_CSV, DEFAULT_ACCEPTED_BUNDLE, DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE, REPORT_DIR
 from src.evaluation import generate_evaluation_reports
 from src.models import predict_raw_default
-from src.preprocessing import prepare_accepted_loans
-
-
-def _read_accepted(path, feature_columns, sample=None):
-    needed = set(feature_columns) | {"id", "loan_status", "issue_d", "term"}
-    return pd.read_csv(path, usecols=lambda col: col in needed, low_memory=False, nrows=sample)
+from preprocessing import load_preprocessed_accepted_loans, preprocess_accepted_loans, save_preprocessed_accepted_loans
 
 
 def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED_CSV, sample=None):
@@ -30,8 +23,15 @@ def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED
     if not test_ids:
         raise ValueError("locked bundle is missing saved test split IDs")
 
-    accepted = prepare_accepted_loans(_read_accepted(csv_path, bundle.feature_columns, sample=sample))
-    test_df = accepted.loc[accepted["id"].astype(str).isin(test_ids)].copy()
+    try:
+        preprocessing = load_preprocessed_accepted_loans(DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
+        if preprocessing.source_fingerprint != actual_source:
+            preprocessing = preprocess_accepted_loans(csv_path, sample=sample, selected_features=bundle.feature_columns)
+            save_preprocessed_accepted_loans(preprocessing, DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
+    except Exception:
+        preprocessing = preprocess_accepted_loans(csv_path, sample=sample, selected_features=bundle.feature_columns)
+        save_preprocessed_accepted_loans(preprocessing, DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
+    test_df = preprocessing.splits["test"].copy()
     if len(test_df) != len(test_ids):
         raise ValueError("source CSV does not contain every saved test split ID")
 

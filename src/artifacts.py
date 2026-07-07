@@ -12,7 +12,10 @@ import joblib
 
 from .config import ARTIFACT_DIR
 
-
+"""
+Defines model saving protocol: saves, loads, versions, and fingerprints model artifacts.
+Important for moving models between files and API integration.
+"""
 @dataclass
 class ModelBundle:
     model: Any

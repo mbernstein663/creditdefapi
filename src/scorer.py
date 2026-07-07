@@ -9,6 +9,11 @@ from .preprocessing import apply_numeric_feature_transforms, ensure_no_forbidden
 
 SCORING_NOTE = "Probability is calibrated for accepted/funded LendingClub-style loans with resolved historical outcomes."
 
+"""
+Takes model bundle and establishes scoring layer of pipeline.
+Returns p_default, risk_band, etc and other important prediction data for a set of records.
+Used for defaulting prediction inference in frontend and batch evaluation.
+"""
 
 def _risk_band(p_default: pd.Series, thresholds: dict | None) -> pd.Series:
     low_max = float((thresholds or {}).get("low_max", 0.10))

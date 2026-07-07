@@ -12,6 +12,7 @@ from src.preprocessing import (
     split_chronological,
     split_manifest,
 )
+from preprocessing import preprocess_accepted_loans
 
 
 def test_target_construction_maps_resolved_and_drops_unresolved():
@@ -133,3 +134,47 @@ def test_split_requires_at_least_four_distinct_issue_dates():
 
     with pytest.raises(ValueError, match="at least 4 distinct issue dates"):
         split_chronological(prepare_accepted_loans(df))
+
+
+def test_preprocessing_stage_returns_splits_and_manifest(tmp_path):
+    csv_path = tmp_path / "accepted.csv"
+    df = pd.DataFrame(
+        {
+            "id": ["1", "2", "3", "4"],
+            "loan_status": ["Fully Paid", "Charged Off", "Fully Paid", "Charged Off"],
+            "issue_d": ["Jan-2018", "Feb-2018", "Mar-2018", "Apr-2018"],
+            "loan_amnt": [1000, 1000, 1000, 1000],
+            "int_rate": [10, 10, 10, 10],
+            "annual_inc": [50000, 50000, 50000, 50000],
+            "dti": [10, 10, 10, 10],
+            "fico_range_low": [700, 700, 700, 700],
+            "fico_range_high": [704, 704, 704, 704],
+            "delinq_2yrs": [0, 0, 0, 0],
+            "inq_last_6mths": [0, 0, 0, 0],
+            "open_acc": [8, 8, 8, 8],
+            "pub_rec": [0, 0, 0, 0],
+            "revol_bal": [1000, 1000, 1000, 1000],
+            "revol_util": [20, 20, 20, 20],
+            "total_acc": [12, 12, 12, 12],
+            "mort_acc": [0, 0, 0, 0],
+            "acc_open_past_24mths": [1, 1, 1, 1],
+            "pub_rec_bankruptcies": [0, 0, 0, 0],
+            "grade": ["A", "A", "A", "A"],
+            "sub_grade": ["A1", "A1", "A1", "A1"],
+            "emp_length": ["4 years", "4 years", "4 years", "4 years"],
+            "home_ownership": ["RENT", "RENT", "RENT", "RENT"],
+            "verification_status": ["Verified", "Verified", "Verified", "Verified"],
+            "purpose": ["debt_consolidation", "debt_consolidation", "debt_consolidation", "debt_consolidation"],
+            "addr_state": ["NY", "NY", "NY", "NY"],
+            "application_type": ["Individual", "Individual", "Individual", "Individual"],
+            "initial_list_status": ["w", "w", "w", "w"],
+            "term": ["36 months", "36 months", "36 months", "36 months"],
+        }
+    )
+    df.to_csv(csv_path, index=False)
+
+    result = preprocess_accepted_loans(csv_path)
+
+    assert set(result.splits) == {"train", "calibration", "validation", "test"}
+    assert result.manifest["row_counts"]["test"] > 0
+    assert result.target_summary["included_rows"] == 4
