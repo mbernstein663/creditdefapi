@@ -87,6 +87,44 @@ def _curve_frames(y_true, p_default) -> tuple[pd.DataFrame, pd.DataFrame]:
     return roc_df, pr_df
 
 
+def _group_calibration(frame: pd.DataFrame, p_default, group) -> pd.DataFrame:
+    predicted = pd.Series(np.asarray(p_default, dtype=float), index=frame.index)
+    data = pd.DataFrame({TARGET: frame[TARGET], "p_default": predicted, "group": group}, index=frame.index).dropna()
+    if data.empty:
+        return pd.DataFrame(
+            columns=[
+                "group",
+                "count",
+                "mean_predicted_default",
+                "observed_default_rate",
+                "absolute_calibration_gap",
+            ]
+        )
+    grouped = (
+        data.groupby("group", as_index=False)
+        .agg(
+            count=(TARGET, "size"),
+            mean_predicted_default=("p_default", "mean"),
+            observed_default_rate=(TARGET, "mean"),
+        )
+        .sort_values("group")
+    )
+    grouped["absolute_calibration_gap"] = (
+        grouped["mean_predicted_default"] - grouped["observed_default_rate"]
+    ).abs()
+    return grouped
+
+
+def _issue_year(frame: pd.DataFrame):
+    if "issue_year" in frame.columns:
+        return frame["issue_year"]
+    if "issue_dt" in frame.columns:
+        return pd.to_datetime(frame["issue_dt"], errors="coerce").dt.year
+    if "issue_d" in frame.columns:
+        return pd.to_datetime(frame["issue_d"], errors="coerce").dt.year
+    return pd.Series(index=frame.index, dtype="float64")
+
+
 def _plot_reliability(path: Path, calibration_df: pd.DataFrame) -> None:
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot([0, 1], [0, 1], linestyle="--", color="0.6", linewidth=1)
@@ -200,15 +238,39 @@ def generate_evaluation_reports(bundle, frame: pd.DataFrame, p_default, output_d
         "metrics_summary": output_dir / "metrics_summary.json",
         "calibration_deciles": output_dir / "calibration_deciles.csv",
         "risk_decile_lift": output_dir / "risk_decile_lift.csv",
+        "calibration_by_issue_year": output_dir / "calibration_by_issue_year.csv",
+        "roc_curve": output_dir / "roc_curve.csv",
+        "pr_curve": output_dir / "pr_curve.csv",
         "reliability_plot": output_dir / "reliability_plot.png",
         "roc_curve_plot": output_dir / "roc_curve.png",
         "pr_curve_plot": output_dir / "pr_curve.png",
         "model_card": output_dir / "model_card.md",
     }
+    feature_columns = set(getattr(bundle, "feature_columns", []) or [])
+    if "grade" in feature_columns:
+        files["calibration_by_grade"] = output_dir / "calibration_by_grade.csv"
+    if "term" in feature_columns or "term_months" in feature_columns:
+        files["calibration_by_term"] = output_dir / "calibration_by_term.csv"
 
     _write_json(files["metrics_summary"], metrics)
     deciles.to_csv(files["calibration_deciles"], index=False)
     lift.to_csv(files["risk_decile_lift"], index=False)
+    _group_calibration(frame, p_default, _issue_year(frame)).rename(columns={"group": "issue_year"}).to_csv(
+        files["calibration_by_issue_year"],
+        index=False,
+    )
+    if "calibration_by_grade" in files:
+        _group_calibration(frame, p_default, frame["grade"] if "grade" in frame.columns else None).rename(
+            columns={"group": "grade"}
+        ).to_csv(files["calibration_by_grade"], index=False)
+    if "calibration_by_term" in files:
+        term = frame["term"] if "term" in frame.columns else frame.get("term_months")
+        _group_calibration(frame, p_default, term).rename(columns={"group": "term"}).to_csv(
+            files["calibration_by_term"],
+            index=False,
+        )
+    roc_df.to_csv(files["roc_curve"], index=False)
+    pr_df.to_csv(files["pr_curve"], index=False)
     _plot_reliability(files["reliability_plot"], deciles)
     _plot_curve(files["roc_curve_plot"], roc_df, "fpr", "tpr", "ROC Curve", "False Positive Rate", "True Positive Rate")
     _plot_curve(files["pr_curve_plot"], pr_df, "recall", "precision", "Precision-Recall Curve", "Recall", "Precision")
