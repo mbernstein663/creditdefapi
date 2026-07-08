@@ -1,0 +1,3 @@
+p_default,p_non_default,confidence,risk_band,model_version,model_type,calibration_method,scoring_note
+0.13804234311212374,0.8619576568878763,0.7239153137757526,low,accepted-default-v1,calibrated_hist_gradient_boosting,isotonic,Probability is calibrated for accepted/funded LendingClub-style loans with resolved historical outcomes.
+0.4310167750770284,0.5689832249229716,0.1379664498459432,high,accepted-default-v1,calibrated_hist_gradient_boosting,isotonic,Probability is calibrated for accepted/funded LendingClub-style loans with resolved historical outcomes.

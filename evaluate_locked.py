@@ -37,7 +37,7 @@ def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED
 
     raw = predict_raw_default(bundle.model, test_df, bundle.feature_columns)
     p_default = bundle.calibrator.predict(raw)
-    report_dir = REPORT_DIR / "test" / "smoke" if sample else REPORT_DIR / "test"
+    report_dir = REPORT_DIR / "smoke" / "test" if sample else REPORT_DIR / "test"
     outputs = generate_evaluation_reports(bundle, test_df, p_default, report_dir, "test")
     save_model_bundle(bundle, bundle_path)
     return outputs["metrics_summary"]

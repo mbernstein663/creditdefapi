@@ -34,7 +34,7 @@ from preprocessing import load_preprocessed_accepted_loans, preprocess_accepted_
 
 
 def _paths(output_path, sample):
-    report_dir = REPORT_DIR / "validation" / "smoke" if sample else REPORT_DIR / "validation"
+    report_dir = REPORT_DIR / "smoke" / "validation" if sample else REPORT_DIR / "validation"
     output = DEFAULT_ACCEPTED_BUNDLE.with_name("accepted_model_smoke.joblib") if sample else Path(output_path)
     return output, report_dir
 

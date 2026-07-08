@@ -117,7 +117,7 @@ def test_invalid_input_returns_validation_error():
     assert response.status_code == 422
 
 
-def test_rejected_style_payload_fails_on_score_endpoint():
+def test_unrecognized_payload_fails_on_score_endpoint():
     client = TestClient(api.app)
 
     response = client.post(

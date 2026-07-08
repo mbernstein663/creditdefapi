@@ -54,7 +54,7 @@ def test_sample_training_uses_smoke_artifact_and_report_paths():
     output, report_dir = train._paths(train.DEFAULT_ACCEPTED_BUNDLE, sample=100)
 
     assert output.name == "accepted_model_smoke.joblib"
-    assert report_dir.name == "smoke"
+    assert report_dir.parts[-2:] == ("smoke", "validation")
 
 
 def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, monkeypatch, capsys):
@@ -139,6 +139,19 @@ def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monk
     assert output.name == "metrics_summary.json"
     assert summary["rows"] > 0
     assert (tmp_path / "reports" / "test" / "model_card.md").exists()
+
+
+def test_locked_evaluation_sample_writes_smoke_reports(tmp_path, monkeypatch):
+    csv_path = tmp_path / "accepted.csv"
+    bundle_path = tmp_path / "bundle.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    monkeypatch.setattr(evaluate_locked, "REPORT_DIR", tmp_path / "reports")
+
+    evaluate_locked.evaluate_locked_model(bundle_path, csv_path, sample=10)
+
+    assert (tmp_path / "reports" / "smoke" / "test" / "metrics_summary.json").exists()
 
 
 def test_locked_evaluation_fails_on_source_fingerprint_drift(tmp_path):

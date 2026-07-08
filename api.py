@@ -14,7 +14,7 @@ from src.config import DEFAULT_ACCEPTED_BUNDLE, DEFAULT_FRONTEND_BUNDLE, ROOT
 from src.schemas import AcceptedScoreRequest, ScoreResponse
 from src.scorer import score_frame, score_records
 
-app = FastAPI(title="Calibrated Credit Default Risk API")
+app = FastAPI(title="Credit Default Risk API")
 
 REQUIRED_METADATA_FIELDS = [
     "bundle_schema_version",

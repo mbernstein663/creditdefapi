@@ -1,4 +1,4 @@
-# Calibrated Credit Default Risk API
+# Credit Default Risk API
 
 ## Overview
 
@@ -73,7 +73,7 @@ Model selection is calibration-first, using:
 
 ## Reports generated
 
-Validation reports are written to `reports/validation/` and locked test reports to `reports/test/`.
+Validation reports are written to `reports/validation/`, locked test reports to `reports/test/`, and smoke/demo runs to `reports/smoke/`. These folders are generated locally and are not committed.
 
 Each stage writes:
 
@@ -206,7 +206,6 @@ curl http://localhost:8000/health
 - Run `python preprocessing.py` once to write `artifacts/accepted_preprocessed.joblib`; `train.py` and `evaluate_locked.py` reuse it when the source CSV fingerprint matches.
 - If Docker is installed but `docker build` fails with engine or pipe errors, start Docker Desktop and wait for the engine to come online.
 - On Windows, `Start-Process "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"` starts Docker Desktop.
-- `formatt.txt` is the copy-paste command list for the full local runbook.
 
 ## Tests
 
@@ -217,6 +216,20 @@ python -m pytest
 ```
 
 The suite covers target construction, leakage prevention, split discipline, calibration outputs, artifact round-tripping, API scoring, batch scoring, and repo guardrails against reintroducing business-decision scope.
+
+## Cold Start
+
+See [RUNBOOK.md](RUNBOOK.md) for a fresh-clone workflow that installs dependencies, preprocesses data, trains the bundle, evaluates the locked split, runs the API, and starts Docker with mounted artifacts.
+
+## Demo Artifacts
+
+Committed demo files live under `docs/demo/`:
+
+- `docs/demo/sample_batch_input.csv`
+- `docs/demo/sample_batch_output.csv`
+- `docs/demo/README.md`
+
+The demo folder also points to screenshot/GIF placeholder paths for API or frontend evidence.
 
 ## Repo structure
 
@@ -245,22 +258,3 @@ Dockerfile
 - Rejected applications are excluded from supervised default modeling because outcomes are not observed.
 - The repo demonstrates disciplined modeling and serving, not production deployment controls.
 - The repo does not include fairness, monitoring, drift management, or operational risk controls needed for real lending use.
-
-## Latest Validation Model Results
-
-Saved CSV: `reports/validation/model_validation_results.csv`
-
-| model | calibration | ROC AUC | PR AUC | Brier | Log loss | mean predicted default | observed default rate | selected |
-|---|---|---:|---:|---:|---:|---:|---:|---|
-| logistic | isotonic | 0.693867 | 0.394177 | 0.167080 | 0.507400 | 0.235246 | 0.239892 | no |
-| logistic_balanced | isotonic | 0.696190 | 0.397752 | 0.166573 | 0.506146 | 0.231322 | 0.239892 | no |
-| random_forest | isotonic | 0.690086 | 0.395406 | 0.167419 | 0.508428 | 0.239207 | 0.239892 | no |
-| hist_gradient_boosting | isotonic | 0.697473 | 0.404248 | 0.166195 | 0.505037 | 0.233484 | 0.239892 | yes |
-
-## Locked Test Results
-
-Saved reports: `reports/test/`
-
-| model | calibration | rows | ROC AUC | PR AUC | Brier | Log loss | mean predicted default | observed default rate |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| hist_gradient_boosting | isotonic | 134273 | 0.709191 | 0.357852 | 0.146283 | 0.456757 | 0.222296 | 0.198856 |
