@@ -175,12 +175,7 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
     return "\n".join([
         "# Model Card",
         "",
-        "## Artifact Status",
-        f"- Evidence label: `{artifact_label}`",
-        f"- Evidence note: {artifact_note}",
-        f"- Evaluation split: `{stage}`",
         f"- Training timestamp: `{metadata.get('training_timestamp', 'n/a')}`",
-        f"- Sample rows requested: `{metadata.get('sample_rows_requested', 'n/a')}`",
         "",
         "## Target",
         f"- Target: `{metadata.get('target_name', TARGET)}`",
@@ -199,9 +194,6 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
         "",
         f"## {stage.title()} Metrics",
         *metric_lines,
-        "",
-        "## Split Strategy",
-        f"`{json.dumps(metadata.get('split_summary', 'not recorded'), default=str)}`",
         ""
     ])
 
