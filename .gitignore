@@ -32,8 +32,12 @@ reports/test/*
 !reports/validation/pr_curve.png
 !reports/test/model_card.md
 !reports/test/metrics_summary.json
-!reports/test/model_validation_results.csv
+!reports/test/baseline_comparison.csv
+!reports/test/baseline_comparison.json
+!reports/test/calibration_deciles.csv
 !reports/test/risk_decile_lift.csv
+!reports/test/roc_curve.csv
+!reports/test/pr_curve.csv
 !reports/test/reliability_plot.png
 !reports/test/roc_curve.png
 !reports/test/pr_curve.png

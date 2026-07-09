@@ -20,7 +20,7 @@ def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED
     ):
         raise ValueError("source CSV fingerprint does not match the locked bundle")
 
-    test_ids = set(bundle.metadata.get("split_manifest", {}).get("test_ids", []))
+    test_ids = {str(value) for value in bundle.metadata.get("split_manifest", {}).get("test_ids", [])}
     if not test_ids:
         raise ValueError("locked bundle is missing saved test split IDs")
 
@@ -36,8 +36,14 @@ def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED
         preprocessing = preprocess_accepted_loans(csv_path, sample=sample, selected_features=bundle.feature_columns)
         save_preprocessed_accepted_loans(preprocessing, DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
     test_df = preprocessing.splits["test"].copy()
-    if len(test_df) != len(test_ids):
-        raise ValueError("source CSV does not contain every saved test split ID")
+    actual_test_ids = set(test_df["id"].astype(str))
+    if actual_test_ids != test_ids:
+        missing = sorted(test_ids - actual_test_ids)
+        unexpected = sorted(actual_test_ids - test_ids)
+        raise ValueError(
+            "source CSV test split IDs do not match the locked bundle "
+            f"(missing={len(missing)}, unexpected={len(unexpected)})"
+        )
 
     raw = predict_raw_default(bundle.model, test_df, bundle.feature_columns)
     p_default = bundle.calibrator.predict(raw)

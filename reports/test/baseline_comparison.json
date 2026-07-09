@@ -1,0 +1,59 @@
+{
+  "models": [
+    {
+      "model_name": "hist_gradient_boosting",
+      "model_role": "final_model",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.22229555827734876,
+      "roc_auc": 0.7091908070791646,
+      "pr_auc": 0.35785214420780054,
+      "brier_score": 0.14628292401105333,
+      "log_loss": 0.45675680389072576
+    },
+    {
+      "model_name": "base_rate",
+      "model_role": "baseline",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.18455908507213437,
+      "roc_auc": 0.5,
+      "pr_auc": 0.19885606190373345,
+      "brier_score": 0.15951673209439532,
+      "log_loss": 0.4994785575120603
+    },
+    {
+      "model_name": "logistic_regression",
+      "model_role": "baseline",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.19979166554002378,
+      "roc_auc": 0.7067865033318557,
+      "pr_auc": 0.3551323739968548,
+      "brier_score": 0.14620178956296848,
+      "log_loss": 0.4562604215723382
+    },
+    {
+      "model_name": "grade_historical_rate",
+      "model_role": "baseline",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.18934145875253414,
+      "roc_auc": 0.6758657439122372,
+      "pr_auc": 0.30442701925943594,
+      "brier_score": 0.14920770090307853,
+      "log_loss": 0.46595526587480673
+    },
+    {
+      "model_name": "sub_grade_historical_rate",
+      "model_role": "baseline",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.19082668434691244,
+      "roc_auc": 0.6853039220370262,
+      "pr_auc": 0.32480813428098704,
+      "brier_score": 0.14869590337218375,
+      "log_loss": 0.4638782334746084
+    }
+  ]
+}

@@ -5,7 +5,7 @@ import pytest
 
 import evaluate_locked
 from src import train
-from src.artifacts import file_fingerprint, load_model_bundle
+from src.artifacts import file_fingerprint, load_model_bundle, save_model_bundle
 from src.config import load_training_config
 from src.preprocessing import preprocess_accepted_loans, save_preprocessed_accepted_loans
 
@@ -159,9 +159,32 @@ def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monk
     assert summary["baseline_comparison"]
     assert bundle.metadata["locked_test_metrics_summary"]["evaluation_split"] == "test"
     assert bundle.metadata["locked_test_baseline_comparison"]
-    assert (tmp_path / "reports" / "test" / "model_card.md").exists()
-    assert (tmp_path / "reports" / "test" / "baseline_comparison.csv").exists()
-    assert (tmp_path / "reports" / "test" / "baseline_comparison.json").exists()
+    for filename in [
+        "metrics_summary.json",
+        "model_card.md",
+        "baseline_comparison.csv",
+        "baseline_comparison.json",
+        "calibration_deciles.csv",
+        "risk_decile_lift.csv",
+        "roc_curve.csv",
+        "pr_curve.csv",
+    ]:
+        assert (tmp_path / "reports" / "test" / filename).exists()
+
+
+def test_locked_evaluation_fails_when_test_id_set_differs_with_same_count(tmp_path, monkeypatch):
+    csv_path = tmp_path / "accepted.csv"
+    bundle_path = tmp_path / "bundle.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    bundle = load_model_bundle(bundle_path)
+    count = len(bundle.metadata["split_manifest"]["test_ids"])
+    bundle.metadata["split_manifest"]["test_ids"] = [f"wrong-{i}" for i in range(count)]
+    save_model_bundle(bundle, bundle_path)
+
+    with pytest.raises(ValueError, match="test split IDs do not match"):
+        evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
 
 
 def test_locked_evaluation_sample_writes_smoke_reports(tmp_path, monkeypatch):

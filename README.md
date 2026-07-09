@@ -46,26 +46,28 @@ Default expected path at repo root:
 
 The active default-risk pipeline requires the accepted-loan file only. Raw LendingClub CSVs are intentionally not committed. Obtain the dataset from a public LendingClub archive or mirror, then place the accepted-loan file at the exact filename above, or pass a custom path with `--csv`.
 
-## Reproducibility Path (Non-Docker)
+## Local Venv Run
 
-Requires `python` on local path.
+Default paths:
+
+- Accepted data: `./accepted_2007_to_2018Q4.csv`
+- Preprocessed cache: `./artifacts/accepted_preprocessed.joblib`
+- Main bundle: `./artifacts/accepted_model.joblib`
+- Frontend bundle: `./artifacts/frontend_model.joblib`
+
+Requires `python` on local path and the accepted-loan CSV at the repo root.
 
 ```bash
-# create venv and install dependencies
-
 python -m venv .venv
+# PowerShell:
+.\.venv\Scripts\Activate.ps1
+# Git Bash:
 . .venv/Scripts/activate
 python -m pip install -r requirements.txt
 python -m pip install -e .[dev]
 
-# expects accepted-loan CSV at `./accepted_2007_to_2018Q4.csv`.
-
 python -m src.preprocessing
-
-# this writes the preprocessing artifact at: `artifacts/accepted_preprocessed.joblib`
-
 python -m src.train
-# Trains candidate calibrated models and writes validation artifacts for model selection.
 ```
 
 This writes:
@@ -74,7 +76,7 @@ This writes:
 - `artifacts/frontend_model.joblib`
 - validation reports under `reports/validation/`
 
-5. Review validation results for model selection.
+Review validation results for model selection:
 
 - `reports/validation/metrics_summary.json`
 - `reports/validation/model_card.md`
@@ -82,9 +84,9 @@ This writes:
 - `reports/validation/risk_decile_lift.csv`
 - ROC/PR/reliability plots
 
-Validation is where model family, calibration method, and display cutoffs are selected. It is not the final held-out performance claim.
+Validation compares the configured candidate runs and confirms/tunes the selected model and calibration choice. In the committed config, `selected_model` pins histogram gradient boosting while still retaining candidate comparison output. Validation is not the final held-out performance claim.
 
-6. Deliberately run the locked test evaluation after model selection is finished.
+Deliberately run the locked test evaluation after model selection is finished:
 
 ```bash
 python evaluate_locked.py
@@ -100,15 +102,19 @@ Expected locked-test report files include:
 - `reports/test/baseline_comparison.json`
 - `reports/test/calibration_deciles.csv`
 - `reports/test/risk_decile_lift.csv`
-- ROC/PR/reliability plots and source curve CSVs
+- `reports/test/roc_curve.csv`
+- `reports/test/pr_curve.csv`
+- `reports/test/reliability_plot.png`
+- `reports/test/roc_curve.png`
+- `reports/test/pr_curve.png`
 
-7. Start the API.
+Start the API:
 
 ```bash
 uvicorn api:app --reload
 ```
 
-8. Check liveness and readiness.
+Check liveness and readiness:
 
 ```bash
 curl http://localhost:8000/health
@@ -117,7 +123,7 @@ curl http://localhost:8000/ready
 
 `/health` only checks that the service is up. `/ready` checks that both saved bundles exist and contain the required metadata. It will return `503` before training has produced artifacts, or when Docker is running without mounted artifacts.
 
-9. Score a single row or batch file.
+Score a single row or batch file:
 
 ```bash
 curl -X POST http://localhost:8000/score \
@@ -155,6 +161,13 @@ curl -X POST http://localhost:8000/score \
 python batch.py docs/demo/sample_batch_input.csv docs/demo/sample_batch_output.csv --api-url http://127.0.0.1:8000
 ```
 
+Smoke/sample runs are for quick checks only and are not final model evidence:
+
+```bash
+python -m src.preprocessing --sample 5000
+python -m src.train --sample 5000
+```
+
 ## API
 
 Endpoints:
@@ -180,18 +193,21 @@ docker build -t credit-default-api .
 Run:
 
 ```bash
-docker run --rm -p 8000:8000 -v ./artifacts:/app/artifacts credit-default-api
+docker run --rm -p 8000:8000 -v "${PWD}/artifacts:/app/artifacts" credit-default-api
 ```
 
-The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default through `.dockerignore`. That means container `/ready` will fail unless you either:
+On Windows PowerShell, this mount form is usually clearer:
 
-1. train on the host first and mount `./artifacts`, or
-2. mount an existing `artifacts/` directory produced elsewhere.
+```powershell
+docker run --rm -p 8000:8000 -v "${PWD}\artifacts:/app/artifacts" credit-default-api
+```
+
+The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default through `.dockerignore`. Train on the host first, then mount `./artifacts`; otherwise container `/ready` will fail because the saved bundles are absent.
 
 ## Reporting Methodology
 
 - `reports/test/model_card.md` is the main final evidence after the locked test run.
-- `reports/validation/` is secondary evidence used for model and calibration selection.
+- `reports/validation/` is secondary evidence used to compare configured candidates and confirm/tune the selected model/calibration choice.
 - `reports/test/` should only be regenerated by deliberately running `python evaluate_locked.py` after selection is complete.
 - `reports/smoke/` is for smoke/sample runs and is not model evidence.
 - `metrics_summary.json` and `model_card.md` label each report as one of:
@@ -230,18 +246,6 @@ python -m pytest
 ```
 
 The suite covers target construction, leakage prevention, split discipline, calibration outputs, artifact round-tripping, batch scoring, API readiness, and repo-level scope guardrails.
-
-
-> 
->
-
-<details>
-<summary> Runbook: </summary>
-
-For a command-only version of the workflow, see [RUNBOOK.md](RUNBOOK.md).
-
-</details>
-
 
 ## Limitations
 

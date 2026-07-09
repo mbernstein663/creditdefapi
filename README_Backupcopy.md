@@ -225,17 +225,18 @@ python -m pytest
 
 The suite covers target construction, leakage prevention, split discipline, calibration outputs, artifact round-tripping, batch scoring, API readiness, and repo-level scope guardrails.
 
-<details>
-<summary> Runbook: </summary>
-
-For a command-only version of the workflow, see [RUNBOOK.md](RUNBOOK.md).
-
-</details>
-
-
 ## Limitations
 
 - Test set may not be representative of current 2026 lending practices
 - Rejected applications are excluded because repayment outcomes are not observed.
 - The repo demonstrates disciplined modeling and artifact serving without production deployment controls.
 - Fair-lending validation, monitoring, and operational controls are not in scope.
+
+## Chronological Split Details
+
+| Split | Rows | Default Rate | Date Min | Date Max |
+| --- | --- | --- | --- | --- |
+| train | 829355 | 0.1846 | 2007-06-01T00:00:00 | 2015-12-01T00:00:00 |
+| calibration | 196607 | 0.2265 | 2016-01-01T00:00:00 | 2016-07-01T00:00:00 |
+| validation | 187864 | 0.2399 | 2016-08-01T00:00:00 | 2017-06-01T00:00:00 |
+| test | 134273 | 0.1989 | 2017-07-01T00:00:00 | 2018-12-01T00:00:00 |

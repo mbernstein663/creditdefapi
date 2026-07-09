@@ -97,3 +97,38 @@ def test_baseline_comparison_uses_train_calibration_only():
 
     assert {"logistic", "base_rate", "grade_historical_rate", "sub_grade_historical_rate"} <= names
     assert all(row.get("rows") == len(splits["test"]) for row in rows if row["model_role"] != "baseline_unavailable")
+
+
+def test_test_model_card_uses_committed_locked_report_format(tmp_path):
+    bundle = accepted_bundle()
+    bundle.metadata["split_row_counts"] = {"train": 10, "calibration": 4, "validation": 3, "test": 3}
+    frame = _frame().iloc[:3].copy()
+    p_default = pd.Series([0.1, 0.2, 0.3])
+    baseline_rows = [
+        {
+            "model_name": "logistic",
+            "model_role": "final_model",
+            "roc_auc": 0.5,
+            "pr_auc": 0.4,
+            "brier_score": 0.2,
+            "log_loss": 0.6,
+            "mean_predicted_default_rate": 0.2,
+        }
+    ]
+
+    outputs = generate_evaluation_reports(
+        bundle,
+        frame,
+        p_default,
+        tmp_path / "reports",
+        "test",
+        baseline_comparison=baseline_rows,
+    )
+    model_card = outputs["model_card"].read_text(encoding="utf-8")
+
+    assert model_card.startswith("# Model Card\n\nTraining timestamp:")
+    assert "## Dataset Splits\n\n- Train: `10`" in model_card
+    assert "## Test Metrics\n\n- Rows:" in model_card
+    assert "## Baseline Comparison\n\n| Model | Role | ROC-AUC | PR-AUC | Brier | Log Loss | Mean PD |" in model_card
+    assert "## Artifact Status" not in model_card
+    assert "## Split Strategy" not in model_card

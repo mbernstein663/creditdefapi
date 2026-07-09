@@ -226,7 +226,57 @@ def _evidence_note(stage: str) -> str:
     return "Validation reports are model-selection evidence, not final held-out performance claims."
 
 
+def _test_model_card(bundle, metrics: dict) -> str:
+    metadata = bundle.metadata or {}
+    metric_lines = [
+        f"- Rows: `{metrics['rows']}`",
+        f"- Observed default rate: `{_fmt(metrics['observed_default_rate'])}`",
+        f"- Mean predicted default rate: `{_fmt(metrics['mean_predicted_default_rate'])}`",
+        f"- ROC-AUC: `{_fmt(metrics['roc_auc'])}`",
+        f"- PR-AUC: `{_fmt(metrics['pr_auc'])}`",
+        f"- Brier score: `{_fmt(metrics['brier_score'])}`",
+        f"- Log loss: `{_fmt(metrics['log_loss'])}`",
+    ]
+    return "\n".join([
+        "# Model Card",
+        "",
+        f"Training timestamp: `{metadata.get('training_timestamp', 'n/a')}`",
+        "",
+        "## Dataset Splits",
+        "",
+        *_split_rows(metadata),
+        "",
+        "## Model",
+        "",
+        f"- Selected model: `{metrics.get('selected_model')}`",
+        f"- Calibration method: `{metrics.get('calibration_method')}`",
+        f"- Feature count: `{len(getattr(bundle, 'feature_columns', []) or [])}`",
+        "",
+        "## Test Metrics",
+        "",
+        *metric_lines,
+        "",
+        "## Baseline Comparison",
+        "",
+        *_markdown_table(
+            _baseline_table_rows(metrics),
+            [
+                ("model_name", "Model"),
+                ("model_role", "Role"),
+                ("roc_auc", "ROC-AUC"),
+                ("pr_auc", "PR-AUC"),
+                ("brier_score", "Brier"),
+                ("log_loss", "Log Loss"),
+                ("mean_predicted_default_rate", "Mean PD"),
+            ],
+        ),
+    ])
+
+
 def _model_card(bundle, stage: str, metrics: dict) -> str:
+    if stage == "test":
+        return _test_model_card(bundle, metrics)
+
     metadata = bundle.metadata or {}
     limits = _limitations(metadata)
     artifact_label, artifact_note = _artifact_status(metadata)

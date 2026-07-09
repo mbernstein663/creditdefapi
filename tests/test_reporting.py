@@ -38,3 +38,24 @@ def test_scope_guardrails_block_reintroduced_decision_or_business_terms():
     lowered = text.lower()
     for term in banned:
         assert term not in lowered
+
+
+def test_gitignore_allows_committed_locked_test_report_files():
+    repo = Path(__file__).resolve().parents[1]
+    lines = set((repo / ".gitignore").read_text(encoding="utf-8").splitlines())
+    expected = {
+        "!reports/test/model_card.md",
+        "!reports/test/metrics_summary.json",
+        "!reports/test/baseline_comparison.csv",
+        "!reports/test/baseline_comparison.json",
+        "!reports/test/calibration_deciles.csv",
+        "!reports/test/risk_decile_lift.csv",
+        "!reports/test/roc_curve.csv",
+        "!reports/test/pr_curve.csv",
+        "!reports/test/reliability_plot.png",
+        "!reports/test/roc_curve.png",
+        "!reports/test/pr_curve.png",
+    }
+
+    assert expected <= lines
+    assert "!reports/test/model_validation_results.csv" not in lines
