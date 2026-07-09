@@ -3,7 +3,6 @@
 ## Default Paths
 
 - Accepted data: `./accepted_2007_to_2018Q4.csv`
-- Rejected data: `./rejected_2007_to_2018Q4.csv`
 - Preprocessed cache: `./artifacts/accepted_preprocessed.joblib`
 - Main bundle: `./artifacts/accepted_model.joblib`
 - Frontend bundle: `./artifacts/frontend_model.joblib`
