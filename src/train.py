@@ -30,7 +30,7 @@ from src.evaluation import generate_evaluation_reports
 from src.models import fit_model, predict_raw_default
 from src.preprocessing import feature_columns
 
-from preprocessing import load_preprocessed_accepted_loans, preprocess_accepted_loans, save_preprocessed_accepted_loans
+from .preprocessing import load_preprocessed_accepted_loans, preprocess_accepted_loans, save_preprocessed_accepted_loans
 
 
 def _paths(output_path, sample):
@@ -47,10 +47,14 @@ def _frontend_output_path(output_path: Path, sample):
     )
 
 
+def _artifact_data_context(sample: int | None) -> str:
+    return "smoke_sample" if sample else "full_lendingclub_local"
+
+
 def _load_or_build_preprocessed(csv_path, sample, selected_features):
     try:
         cached = load_preprocessed_accepted_loans(DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
-        if cached.source_fingerprint == file_fingerprint(csv_path):
+        if cached.source_fingerprint == file_fingerprint(csv_path) and getattr(cached, "sample_rows_requested", None) == sample:
             return cached
     except Exception:
         pass
@@ -103,21 +107,22 @@ def _risk_band_thresholds(p_default) -> dict:
 def _permutation_feature_importance(model, calibrator, frame: pd.DataFrame, selected_features: list[str]) -> list[dict]:
     baseline_raw = predict_raw_default(model, frame, selected_features)
     baseline_p = calibrator.predict(baseline_raw)
-    baseline_brier = float(np.mean((pd.Series(baseline_p) - frame[TARGET]) ** 2))
+    actual = frame[TARGET].to_numpy(dtype=float)
+    baseline_brier = float(np.mean((np.asarray(baseline_p, dtype=float) - actual) ** 2))
     rows = []
     for column in selected_features:
         permuted = frame.copy()
         permuted[column] = permuted[column].sample(frac=1, random_state=42).to_numpy()
         raw = predict_raw_default(model, permuted, selected_features)
         p_default = calibrator.predict(raw)
-        permuted_brier = float(np.mean((pd.Series(p_default) - frame[TARGET]) ** 2))
+        permuted_brier = float(np.mean((np.asarray(p_default, dtype=float) - actual) ** 2))
         rows.append(
             {
                 "feature": column,
-                "importance": max(0.0, permuted_brier - baseline_brier),
+                "importance": permuted_brier - baseline_brier,
             }
         )
-    return sorted(rows, key=lambda row: row["importance"], reverse=True)
+    return sorted(rows, key=lambda row: abs(row["importance"]), reverse=True)
 
 
 def _cross_validation_summary(train_df: pd.DataFrame, selected_features: list[str], model_name: str) -> dict:
@@ -175,7 +180,7 @@ def _cross_validation_summary(train_df: pd.DataFrame, selected_features: list[st
 
 
 def _print_validation_summary(candidates: list[dict], selected: dict) -> None:
-    comparison = pd.DataFrame(_candidate_comparison_rows(candidates, selected)).sort_values(["brier_score", "log_loss"])
+    comparison = pd.DataFrame(_candidate_comparison_rows(candidates)).sort_values(["brier_score", "log_loss"])
     print(
         "\n".join(
             [
@@ -225,48 +230,27 @@ def select_candidate(
     return selected, candidates
 
 
-def _candidate_comparison_rows(candidates: list[dict], selected: dict | None = None) -> list[dict]:
+def _candidate_comparison_rows(candidates: list[dict]) -> list[dict]:
     rows = []
     for candidate in candidates:
         metrics = candidate["metrics"]
-        row = {
-            "model_name": candidate["model_name"],
-            "calibration_method": candidate["calibration_method"],
-            "roc_auc": metrics["roc_auc"],
-            "pr_auc": metrics["pr_auc"],
-            "brier_score": metrics["brier_score"],
-            "log_loss": metrics["log_loss"],
-            "mean_predicted_default_rate": metrics["mean_predicted_default"],
-            "observed_default_rate": metrics["actual_default_rate"],
-            "cv_mean_brier_score": candidate["cv_metrics"].get("mean_brier_score"),
-            "cv_mean_log_loss": candidate["cv_metrics"].get("mean_log_loss"),
-            "cv_mean_absolute_calibration_gap": candidate["cv_metrics"].get("mean_absolute_calibration_gap"),
-            "cv_fold_count": candidate["cv_metrics"].get("fold_count"),
-        }
-        if selected is not None:
-            row["selected"] = (
-                candidate["model_name"] == selected["model_name"]
-                and candidate["calibration_method"] == selected["calibration_method"]
-            )
-        rows.append(row)
+        rows.append(
+            {
+                "model_name": candidate["model_name"],
+                "calibration_method": candidate["calibration_method"],
+                "roc_auc": metrics["roc_auc"],
+                "pr_auc": metrics["pr_auc"],
+                "brier_score": metrics["brier_score"],
+                "log_loss": metrics["log_loss"],
+                "mean_predicted_default_rate": metrics["mean_predicted_default"],
+                "observed_default_rate": metrics["actual_default_rate"],
+                "cv_mean_brier_score": candidate["cv_metrics"].get("mean_brier_score"),
+                "cv_mean_log_loss": candidate["cv_metrics"].get("mean_log_loss"),
+                "cv_mean_absolute_calibration_gap": candidate["cv_metrics"].get("mean_absolute_calibration_gap"),
+                "cv_fold_count": candidate["cv_metrics"].get("fold_count"),
+            }
+        )
     return rows
-
-
-def _display_validation_rows(candidates: list[dict], selected: dict) -> list[dict]:
-    return [
-        {
-            "model": row["model_name"],
-            "calibration": row["calibration_method"],
-            "roc_auc": row["roc_auc"],
-            "pr_auc": row["pr_auc"],
-            "brier": row["brier_score"],
-            "log_loss": row["log_loss"],
-            "mean_predicted_default": row["mean_predicted_default_rate"],
-            "observed_default_rate": row["observed_default_rate"],
-            "selected": row["selected"],
-        }
-        for row in _candidate_comparison_rows(candidates, selected)
-    ]
 
 
 def _build_bundle(
@@ -285,6 +269,8 @@ def _build_bundle(
     feature_importance: list[dict] | None = None,
     cross_validation_summary: dict | None = None,
     model_version: str = MODEL_VERSION,
+    artifact_data_context: str = "full_lendingclub_local",
+    sample_rows_requested: int | None = None,
 ):
     selected_metrics = selected["metrics"]
     return ModelBundle(
@@ -341,6 +327,8 @@ def _build_bundle(
             "package_versions": versions,
             "git_commit": git_commit,
             "training_timestamp": training_timestamp,
+            "artifact_data_context": artifact_data_context,
+            "sample_rows_requested": sample_rows_requested,
         },
     )
 
@@ -380,11 +368,7 @@ def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUN
         selected_model_name=selected_model_name,
     )
     forbidden_columns = sorted(FORBIDDEN_FEATURE_COLUMNS)
-    pd.DataFrame(_candidate_comparison_rows(candidates, selected)).to_csv(report_dir / "model_comparison.csv", index=False)
-    pd.DataFrame(_display_validation_rows(candidates, selected)).to_csv(
-        report_dir / "model_validation_results.csv",
-        index=False,
-    )
+    pd.DataFrame(_candidate_comparison_rows(candidates)).to_csv(report_dir / "model_validation_results.csv", index=False)
 
     cross_validation_summary = {
         "enabled": include_cv,
@@ -410,17 +394,6 @@ def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUN
             selected_features,
         )
         frontend_fields = [row["feature"] for row in feature_importance[:FRONTEND_TOP_FEATURE_COUNT]]
-        pd.DataFrame(feature_importance).to_csv(report_dir / "feature_importance.csv", index=False)
-        pd.DataFrame(
-            [
-                {
-                    "model_name": candidate["model_name"],
-                    "calibration_method": candidate["calibration_method"],
-                    **candidate["cv_metrics"],
-                }
-                for candidate in candidates
-            ]
-        ).to_csv(report_dir / "cross_validation_summary.csv", index=False)
 
         frontend_selected, frontend_candidates = select_candidate(
             train_df,
@@ -461,6 +434,8 @@ def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUN
             feature_importance=feature_importance,
             cross_validation_summary=frontend_cross_validation_summary,
             model_version=f"{MODEL_VERSION}-frontend",
+            artifact_data_context=_artifact_data_context(sample),
+            sample_rows_requested=sample,
         )
         save_model_bundle(frontend_bundle, frontend_output_path)
 
@@ -479,6 +454,8 @@ def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUN
         frontend_fields=frontend_fields,
         feature_importance=feature_importance,
         cross_validation_summary=cross_validation_summary,
+        artifact_data_context=_artifact_data_context(sample),
+        sample_rows_requested=sample,
     )
     saved = save_model_bundle(bundle, output_path)
     generate_evaluation_reports(bundle, validation_df, selected["p_validation"], report_dir, "validation")

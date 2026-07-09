@@ -39,6 +39,7 @@ def accepted_bundle(metadata=None, feature_columns=None):
             "split_summary": [],
             "target_definition": "resolved accepted/funded loan default target",
             "forbidden_feature_columns": ["loan_status"],
+            "artifact_data_context": "synthetic_test_fixture",
             "frontend_fields": ["loan_amnt", "int_rate", "annual_inc", "dti", "fico_range_low"],
             "feature_importance": [
                 {"feature": "loan_amnt", "importance": 0.03},

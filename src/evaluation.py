@@ -41,22 +41,17 @@ def _risk_decile_lift(frame: pd.DataFrame, p_default, bins: int = 10) -> pd.Data
     if data.empty:
         return pd.DataFrame(columns=columns)
 
-    try:
-        raw_decile = pd.qcut(
-            data["p_default"].rank(method="first"),
-            q=min(bins, len(data)),
-            labels=False,
-            duplicates="drop",
-        )
-        data["predicted_risk_decile"] = int(raw_decile.max()) + 1 - raw_decile.astype(int)
-    except ValueError:
-        data["predicted_risk_decile"] = 1
+    ranked = data["p_default"].rank(method="first", ascending=False)
+    data["predicted_risk_decile"] = np.ceil(ranked / len(data) * bins).astype(int).clip(1, bins)
 
     grouped = (
         data.groupby("predicted_risk_decile", as_index=False)
-        .agg(count=(TARGET, "size"), defaults=(TARGET, "sum"), observed_default_rate=(TARGET, "mean"))
-        .sort_values("predicted_risk_decile")
+        .agg(count=(TARGET, "size"), defaults=(TARGET, "sum"))
+        .set_index("predicted_risk_decile")
+        .reindex(range(1, bins + 1), fill_value=0)
+        .reset_index()
     )
+    grouped["observed_default_rate"] = np.where(grouped["count"] > 0, grouped["defaults"] / grouped["count"], 0.0)
     portfolio_rate = float(data[TARGET].mean())
     total_defaults = float(grouped["defaults"].sum())
     grouped["lift_versus_portfolio_default_rate"] = (
@@ -85,44 +80,6 @@ def _curve_frames(y_true, p_default) -> tuple[pd.DataFrame, pd.DataFrame]:
         "threshold": np.append(pr_thresholds, np.nan),
     })
     return roc_df, pr_df
-
-
-def _group_calibration(frame: pd.DataFrame, p_default, group) -> pd.DataFrame:
-    predicted = pd.Series(np.asarray(p_default, dtype=float), index=frame.index)
-    data = pd.DataFrame({TARGET: frame[TARGET], "p_default": predicted, "group": group}, index=frame.index).dropna()
-    if data.empty:
-        return pd.DataFrame(
-            columns=[
-                "group",
-                "count",
-                "mean_predicted_default",
-                "observed_default_rate",
-                "absolute_calibration_gap",
-            ]
-        )
-    grouped = (
-        data.groupby("group", as_index=False)
-        .agg(
-            count=(TARGET, "size"),
-            mean_predicted_default=("p_default", "mean"),
-            observed_default_rate=(TARGET, "mean"),
-        )
-        .sort_values("group")
-    )
-    grouped["absolute_calibration_gap"] = (
-        grouped["mean_predicted_default"] - grouped["observed_default_rate"]
-    ).abs()
-    return grouped
-
-
-def _issue_year(frame: pd.DataFrame):
-    if "issue_year" in frame.columns:
-        return frame["issue_year"]
-    if "issue_dt" in frame.columns:
-        return pd.to_datetime(frame["issue_dt"], errors="coerce").dt.year
-    if "issue_d" in frame.columns:
-        return pd.to_datetime(frame["issue_d"], errors="coerce").dt.year
-    return pd.Series(index=frame.index, dtype="float64")
 
 
 def _plot_reliability(path: Path, calibration_df: pd.DataFrame) -> None:
@@ -164,6 +121,39 @@ def _csv(values) -> str:
     return ", ".join(values or []) or "not recorded"
 
 
+def _artifact_status(metadata: dict) -> tuple[str, str]:
+    context = metadata.get("artifact_data_context")
+    if context == "full_lendingclub_local":
+        return (
+            "Full LendingClub local data",
+            "Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.",
+        )
+    if context == "smoke_sample":
+        sample_rows = metadata.get("sample_rows_requested")
+        sample_note = f" Sample rows requested: {sample_rows}." if sample_rows else ""
+        return (
+            "Smoke-test sample",
+            "Smoke-test artifact from a sampled LendingClub run. Not final model evidence." + sample_note,
+        )
+    if context == "synthetic_test_fixture":
+        return (
+            "Synthetic/test fixture",
+            "Synthetic or test-fixture artifact used for CI or unit tests. Not LendingClub model evidence.",
+        )
+    return (
+        "Unlabeled artifact",
+        "Artifact context was not recorded. Treat results as non-final until rerun with current code.",
+    )
+
+
+def _split_rows(metadata: dict) -> list[str]:
+    counts = metadata.get("split_row_counts") or {}
+    if not counts:
+        return ["- Split rows: `not recorded`"]
+    order = ["train", "calibration", "validation", "test"]
+    return [f"- {name.title()}: `{counts.get(name, 'n/a')}`" for name in order if name in counts]
+
+
 def _model_card(bundle, stage: str, metrics: dict) -> str:
     metadata = bundle.metadata or {}
     limits = metadata.get("limitations") or [
@@ -172,6 +162,7 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
         "no rejected-applicant outcome prediction",
         "no fair-lending validation",
     ]
+    artifact_label, artifact_note = _artifact_status(metadata)
     metric_lines = [
         f"- Rows: `{metrics['rows']}`",
         f"- Observed default rate: `{_fmt(metrics['observed_default_rate'])}`",
@@ -183,6 +174,13 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
     ]
     return "\n".join([
         "# Model Card",
+        "",
+        "## Artifact Status",
+        f"- Evidence label: `{artifact_label}`",
+        f"- Evidence note: {artifact_note}",
+        f"- Evaluation split: `{stage}`",
+        f"- Training timestamp: `{metadata.get('training_timestamp', 'n/a')}`",
+        f"- Sample rows requested: `{metadata.get('sample_rows_requested', 'n/a')}`",
         "",
         "## Purpose",
         "Calibrated default-risk prediction for accepted LendingClub loans with resolved outcomes.",
@@ -196,9 +194,14 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
         f"- Bad statuses: `{_csv(metadata.get('bad_statuses'))}`",
         f"- Dropped statuses: `{_csv(metadata.get('dropped_statuses'))}`",
         "",
+        "## Dataset Splits",
+        *_split_rows(metadata),
+        "",
         "## Model",
+        f"- Model type: `{metadata.get('selected_model_type', bundle.model_type)}`",
         f"- Selected model: `{metrics.get('selected_model')}`",
         f"- Calibration method: `{metrics.get('calibration_method')}`",
+        f"- Feature count: `{len(getattr(bundle, 'feature_columns', []) or [])}`",
         "",
         f"## {stage.title()} Metrics",
         *metric_lines,
@@ -218,8 +221,10 @@ def generate_evaluation_reports(bundle, frame: pd.DataFrame, p_default, output_d
 
     metadata = bundle.metadata or {}
     summary = calibration_summary(frame[TARGET], p_default)
+    artifact_label, artifact_note = _artifact_status(metadata)
     metrics = {
         "stage": stage,
+        "evaluation_split": stage,
         "rows": int(len(frame)),
         "observed_default_rate": summary["actual_default_rate"],
         "mean_predicted_default_rate": summary["mean_predicted_default"],
@@ -228,49 +233,32 @@ def generate_evaluation_reports(bundle, frame: pd.DataFrame, p_default, output_d
         "brier_score": summary["brier_score"],
         "log_loss": summary["log_loss"],
         "selected_model": metadata.get("selected_model_name"),
+        "model_type": metadata.get("selected_model_type", bundle.model_type),
         "calibration_method": metadata.get("calibration_method"),
+        "target_name": metadata.get("target_name", TARGET),
+        "training_timestamp": metadata.get("training_timestamp"),
+        "artifact_data_context": metadata.get("artifact_data_context"),
+        "artifact_label": artifact_label,
+        "artifact_note": artifact_note,
+        "sample_rows_requested": metadata.get("sample_rows_requested"),
+        "split_row_counts": metadata.get("split_row_counts"),
+        "limitations": metadata.get("limitations"),
     }
-    deciles = pd.DataFrame(summary["deciles"])
     lift = _risk_decile_lift(frame, p_default)
+    deciles = pd.DataFrame(summary["deciles"])
     roc_df, pr_df = _curve_frames(frame[TARGET], p_default)
 
     files = {
         "metrics_summary": output_dir / "metrics_summary.json",
-        "calibration_deciles": output_dir / "calibration_deciles.csv",
         "risk_decile_lift": output_dir / "risk_decile_lift.csv",
-        "calibration_by_issue_year": output_dir / "calibration_by_issue_year.csv",
-        "roc_curve": output_dir / "roc_curve.csv",
-        "pr_curve": output_dir / "pr_curve.csv",
         "reliability_plot": output_dir / "reliability_plot.png",
         "roc_curve_plot": output_dir / "roc_curve.png",
         "pr_curve_plot": output_dir / "pr_curve.png",
         "model_card": output_dir / "model_card.md",
     }
-    feature_columns = set(getattr(bundle, "feature_columns", []) or [])
-    if "grade" in feature_columns:
-        files["calibration_by_grade"] = output_dir / "calibration_by_grade.csv"
-    if "term" in feature_columns or "term_months" in feature_columns:
-        files["calibration_by_term"] = output_dir / "calibration_by_term.csv"
 
     _write_json(files["metrics_summary"], metrics)
-    deciles.to_csv(files["calibration_deciles"], index=False)
     lift.to_csv(files["risk_decile_lift"], index=False)
-    _group_calibration(frame, p_default, _issue_year(frame)).rename(columns={"group": "issue_year"}).to_csv(
-        files["calibration_by_issue_year"],
-        index=False,
-    )
-    if "calibration_by_grade" in files:
-        _group_calibration(frame, p_default, frame["grade"] if "grade" in frame.columns else None).rename(
-            columns={"group": "grade"}
-        ).to_csv(files["calibration_by_grade"], index=False)
-    if "calibration_by_term" in files:
-        term = frame["term"] if "term" in frame.columns else frame.get("term_months")
-        _group_calibration(frame, p_default, term).rename(columns={"group": "term"}).to_csv(
-            files["calibration_by_term"],
-            index=False,
-        )
-    roc_df.to_csv(files["roc_curve"], index=False)
-    pr_df.to_csv(files["pr_curve"], index=False)
     _plot_reliability(files["reliability_plot"], deciles)
     _plot_curve(files["roc_curve_plot"], roc_df, "fpr", "tpr", "ROC Curve", "False Positive Rate", "True Positive Rate")
     _plot_curve(files["pr_curve_plot"], pr_df, "recall", "precision", "Precision-Recall Curve", "Recall", "Precision")

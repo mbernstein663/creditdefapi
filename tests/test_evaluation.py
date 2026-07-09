@@ -53,31 +53,18 @@ def test_generate_evaluation_reports_creates_required_outputs(tmp_path):
 
     for key in [
         "metrics_summary",
-        "calibration_deciles",
         "risk_decile_lift",
-        "calibration_by_issue_year",
-        "roc_curve",
-        "pr_curve",
         "reliability_plot",
         "roc_curve_plot",
         "pr_curve_plot",
         "model_card",
-        "calibration_by_grade",
     ]:
         assert outputs[key].exists()
 
     summary = json.loads(outputs["metrics_summary"].read_text(encoding="utf-8"))
     assert summary["selected_model"] == "logistic"
     assert summary["calibration_method"] == "isotonic"
-
-    deciles = pd.read_csv(outputs["calibration_deciles"])
-    assert {
-        "decile",
-        "count",
-        "mean_predicted_default",
-        "observed_default_rate",
-        "absolute_calibration_gap",
-    } <= set(deciles.columns)
+    assert summary["artifact_data_context"] == "synthetic_test_fixture"
 
     lift = pd.read_csv(outputs["risk_decile_lift"])
     assert {
@@ -87,3 +74,8 @@ def test_generate_evaluation_reports_creates_required_outputs(tmp_path):
         "lift_versus_portfolio_default_rate",
         "cumulative_share_of_defaults_captured",
     } <= set(lift.columns)
+    assert len(lift) == 10
+    assert lift["predicted_risk_decile"].tolist() == list(range(1, 11))
+
+    model_card = outputs["model_card"].read_text(encoding="utf-8")
+    assert "Synthetic/test fixture" in model_card

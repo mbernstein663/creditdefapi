@@ -46,6 +46,7 @@ def test_model_card_returns_metadata(monkeypatch):
     body = response.json()
     assert body["model_version"] == "accepted-default-v1"
     assert body["calibration_method"] == "isotonic"
+    assert body["artifact_label"] == "Synthetic/test fixture"
     assert "cross_validation_summary" in body
 
 

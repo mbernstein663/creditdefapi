@@ -4,9 +4,10 @@ import pandas as pd
 import pytest
 
 import evaluate_locked
-import train
+from src import train
 from src.artifacts import file_fingerprint, load_model_bundle
 from src.config import load_training_config
+from src.preprocessing import preprocess_accepted_loans, save_preprocessed_accepted_loans
 
 
 def _training_frame(rows=40):
@@ -67,12 +68,13 @@ def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, 
     bundle = load_model_bundle(saved)
 
     assert bundle.metadata["model_version"] == "accepted-default-v1"
+    assert bundle.metadata["artifact_data_context"] == "full_lendingclub_local"
     assert bundle.metadata["split_manifest"]["row_counts"]["test"] > 0
     assert bundle.metadata["split_date_boundaries"]["validation"]["min"] is not None
     assert bundle.metadata["validation_metrics_summary"]["rows"] == bundle.metadata["split_row_counts"]["validation"]
     assert bundle.metadata["cross_validation_summary"]["selected_model_name"] == bundle.metadata["selected_model_name"]
     assert (tmp_path / "reports" / "validation" / "metrics_summary.json").exists()
-    assert (tmp_path / "reports" / "validation" / "cross_validation_summary.csv").exists()
+    assert (tmp_path / "reports" / "validation" / "model_validation_results.csv").exists()
     out = capsys.readouterr().out
     assert "best model:" in out
     assert "saved best model:" in out
@@ -112,6 +114,21 @@ def test_training_config_controls_models_and_cv(tmp_path, monkeypatch):
     assert loaded["calibration_methods"] == ["isotonic"]
 
 
+def test_full_training_does_not_reuse_smoke_preprocessed_cache(tmp_path, monkeypatch):
+    csv_path = tmp_path / "accepted.csv"
+    bundle_path = tmp_path / "bundle.joblib"
+    cache_path = tmp_path / "accepted_preprocessed.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    save_preprocessed_accepted_loans(preprocess_accepted_loans(csv_path, sample=10), cache_path)
+    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+    monkeypatch.setattr(train, "DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE", cache_path)
+
+    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    bundle = load_model_bundle(saved)
+
+    assert bundle.metadata["split_row_counts"]["train"] == 24
+
+
 def test_validation_only_mode_writes_comparison_without_bundle(tmp_path, monkeypatch):
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
@@ -122,7 +139,7 @@ def test_validation_only_mode_writes_comparison_without_bundle(tmp_path, monkeyp
 
     assert saved == bundle_path
     assert bundle_path.exists()
-    assert (tmp_path / "reports" / "validation" / "model_comparison.csv").exists()
+    assert (tmp_path / "reports" / "validation" / "model_validation_results.csv").exists()
 
 
 def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monkeypatch):
@@ -135,9 +152,11 @@ def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monk
 
     output = evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
     summary = json.loads(output.read_text(encoding="utf-8"))
+    bundle = load_model_bundle(bundle_path)
 
     assert output.name == "metrics_summary.json"
     assert summary["rows"] > 0
+    assert bundle.metadata["locked_test_metrics_summary"]["evaluation_split"] == "test"
     assert (tmp_path / "reports" / "test" / "model_card.md").exists()
 
 

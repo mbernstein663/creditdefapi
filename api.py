@@ -29,6 +29,15 @@ REQUIRED_METADATA_FIELDS = [
 ]
 
 
+def _artifact_label(metadata: dict) -> str | None:
+    mapping = {
+        "full_lendingclub_local": "Full LendingClub local data",
+        "smoke_sample": "Smoke-test sample",
+        "synthetic_test_fixture": "Synthetic/test fixture",
+    }
+    return mapping.get(metadata.get("artifact_data_context"))
+
+
 @lru_cache(maxsize=1)
 def accepted_bundle():
     return load_model_bundle(DEFAULT_ACCEPTED_BUNDLE)
@@ -60,6 +69,9 @@ def _artifact_errors(path):
 def _model_card_payload(bundle) -> dict:
     metadata = bundle.metadata or {}
     return {
+        "artifact_data_context": metadata.get("artifact_data_context"),
+        "artifact_label": _artifact_label(metadata),
+        "sample_rows_requested": metadata.get("sample_rows_requested"),
         "model_version": metadata.get("model_version"),
         "model_type": metadata.get("selected_model_type", bundle.model_type),
         "selected_model": metadata.get("selected_model_name"),

@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import argparse
+import json
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 
+from .artifacts import file_fingerprint
 from .config import (
     ACCEPTED_CATEGORICAL_RISK_FEATURES,
+    ACCEPTED_CSV,
     ACCEPTED_NUMERIC_RISK_FEATURES,
     BAD_STATUSES,
+    DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE,
     FORBIDDEN_FEATURE_COLUMNS,
     GOOD_STATUSES,
     RISK_NUMERIC_CLIP_RANGES,
@@ -18,7 +26,19 @@ from .config import (
     UNRESOLVED_STATUSES,
 )
 
-# parse percentages as numeric
+
+@dataclass(slots=True)
+class PreprocessedAcceptedLoans:
+    source_fingerprint: dict
+    target_summary: dict
+    accepted: pd.DataFrame
+    splits: dict[str, pd.DataFrame]
+    manifest: dict
+    split_summary: list[dict]
+    selected_features: list[str]
+    sample_rows_requested: int | None
+
+
 def parse_percent(value):
     if pd.isna(value):
         return pd.NA
@@ -26,20 +46,20 @@ def parse_percent(value):
         value = value.strip().replace("%", "")
     return pd.to_numeric(value, errors="coerce")
 
-# parse months
+
 def parse_term_months(value):
     if pd.isna(value):
         return pd.NA
     match = re.search(r"\d+", str(value))
     return int(match.group(0)) if match else pd.NA
 
-# parse dates
+
 def parse_date(value):
     if pd.isna(value):
         return pd.NaT
     return pd.to_datetime(value, format="%b-%Y", errors="coerce")
 
-# add clipping and log transform to columns
+
 def apply_numeric_feature_transforms(df: pd.DataFrame) -> pd.DataFrame:
     transformed = df.copy()
     for column, (lower, upper) in RISK_NUMERIC_CLIP_RANGES.items():
@@ -51,7 +71,7 @@ def apply_numeric_feature_transforms(df: pd.DataFrame) -> pd.DataFrame:
             transformed[column] = np.log1p(values)
     return transformed
 
-# construct binary default target based on config-specified default status 
+
 def construct_target(df: pd.DataFrame, return_summary: bool = False) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
     if "loan_status" not in df.columns:
         raise ValueError("accepted loan data must include loan_status")
@@ -81,7 +101,6 @@ def construct_target(df: pd.DataFrame, return_summary: bool = False) -> pd.DataF
     return out
 
 
-# use prev. defined parsers to prepare datetime columns, numeric transformations, and target
 def prepare_accepted_loans(df: pd.DataFrame, return_summary: bool = False) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
     prepared, summary = construct_target(df, return_summary=True)
     if "term" in prepared.columns and "term_months" not in prepared.columns:
@@ -106,18 +125,17 @@ def prepare_accepted_loans(df: pd.DataFrame, return_summary: bool = False) -> pd
     prepared.attrs["target_summary"] = summary
     return prepared
 
-# returns list of feature columns
+
 def feature_columns() -> list[str]:
     return ACCEPTED_NUMERIC_RISK_FEATURES + ACCEPTED_CATEGORICAL_RISK_FEATURES
 
-# ensures no disallowed features according to config
+
 def ensure_no_forbidden_features(feature_columns: Iterable[str]) -> None:
     forbidden = sorted(set(feature_columns) & set(FORBIDDEN_FEATURE_COLUMNS))
     if forbidden:
         raise ValueError(f"forbidden model features: {', '.join(forbidden)}")
 
 
-# defines chronological TCVT split of 60-15-15-10 by validating + ordering dates and assigning split rows
 def split_chronological(
     df: pd.DataFrame,
     date_col: str = "issue_dt",
@@ -141,7 +159,12 @@ def split_chronological(
         raise ValueError("chronological split requires at least 4 distinct issue dates")
 
     n = len(ordered)
-    targets = [int(n * ratios[0]), int(n * (ratios[0] + ratios[1])), int(n * (ratios[0] + ratios[1] + ratios[2])), n]
+    targets = [
+        int(n * ratios[0]),
+        int(n * (ratios[0] + ratios[1])),
+        int(n * (ratios[0] + ratios[1] + ratios[2])),
+        n,
+    ]
     split_names = ["train", "calibration", "validation", "test"]
     rows_by_split: dict[str, list[int]] = {name: [] for name in split_names}
     split_idx = 0
@@ -156,7 +179,6 @@ def split_chronological(
     return {name: ordered.loc[indexes].copy() for name, indexes in rows_by_split.items()}
 
 
-# metadata report of split
 def split_manifest(splits: dict[str, pd.DataFrame]) -> dict:
     manifest = {"row_counts": {}, "date_ranges": {}, "default_rates": {}}
     for name, frame in splits.items():
@@ -173,7 +195,7 @@ def split_manifest(splits: dict[str, pd.DataFrame]) -> dict:
             manifest["test_ids"] = frame["id"].astype(str).tolist()
     return manifest
 
-# returns summary of split results, row-by-row
+
 def split_summary(splits: dict[str, pd.DataFrame]) -> list[dict]:
     rows = []
     for split, frame in splits.items():
@@ -188,7 +210,7 @@ def split_summary(splits: dict[str, pd.DataFrame]) -> list[dict]:
         )
     return rows
 
-# more detailed year-by-year report
+
 def split_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
     rows = []
     for split, frame in splits.items():
@@ -208,16 +230,6 @@ def split_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# def split_row_count_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
-#     rows = []
-#     for split, frame in splits.items():
-#         grouped = frame.groupby("issue_year", dropna=False).size()
-#         for issue_year, count in grouped.items():
-#             rows.append({"split": split, "issue_year": issue_year, "rows": int(count)})
-#     return pd.DataFrame(rows)
-
-
-# standardizes column names
 def normalize_rejected_input(df: pd.DataFrame) -> pd.DataFrame:
     renamed = df.rename(
         columns={
@@ -234,3 +246,79 @@ def normalize_rejected_input(df: pd.DataFrame) -> pd.DataFrame:
     if "dti" in renamed.columns:
         renamed["dti"] = renamed["dti"].map(parse_percent)
     return renamed
+
+
+def _read_accepted(path, selected_features, sample=None):
+    needed = set(selected_features) | {"id", "loan_status", "issue_d", "term"}
+    if sample is None:
+        return pd.read_csv(path, usecols=lambda col: col in needed, low_memory=False)
+
+    chunk_size = max(sample, 50000)
+    frames = []
+    for chunk in pd.read_csv(path, usecols=lambda col: col in needed, low_memory=False, chunksize=chunk_size):
+        frames.append(chunk)
+        candidate = pd.concat(frames, ignore_index=True)
+        prepared = prepare_accepted_loans(candidate)
+        try:
+            splits = split_chronological(prepared)
+        except ValueError:
+            continue
+        if len(prepared) >= sample and all(len(frame) > 0 for frame in splits.values()):
+            return candidate
+    return pd.concat(frames, ignore_index=True)
+
+
+def preprocess_accepted_loans(csv_path=ACCEPTED_CSV, sample=None, selected_features: list[str] | None = None) -> PreprocessedAcceptedLoans:
+    selected_features = list(selected_features or feature_columns())
+    source = _read_accepted(csv_path, selected_features, sample=sample)
+    accepted, target_summary = prepare_accepted_loans(source, return_summary=True)
+    splits = split_chronological(accepted)
+    return PreprocessedAcceptedLoans(
+        source_fingerprint=file_fingerprint(csv_path),
+        target_summary=target_summary,
+        accepted=accepted,
+        splits=splits,
+        manifest=split_manifest(splits),
+        split_summary=split_summary(splits),
+        selected_features=selected_features,
+        sample_rows_requested=sample,
+    )
+
+
+def save_preprocessed_accepted_loans(bundle: PreprocessedAcceptedLoans, path: str | Path = DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE) -> Path:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(bundle, output)
+    return output
+
+
+def load_preprocessed_accepted_loans(path: str | Path = DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE) -> PreprocessedAcceptedLoans:
+    return joblib.load(Path(path))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Prepare accepted LendingClub loans for default-risk training.")
+    parser.add_argument("--csv", default=ACCEPTED_CSV)
+    parser.add_argument("--sample", type=int, default=None)
+    parser.add_argument("--output", default=DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
+    args = parser.parse_args()
+    result = preprocess_accepted_loans(args.csv, sample=args.sample)
+    saved = save_preprocessed_accepted_loans(result, args.output)
+    print(
+        json.dumps(
+            {
+                "output": str(saved),
+                "source_fingerprint": result.source_fingerprint,
+                "target_summary": result.target_summary,
+                "split_manifest": result.manifest,
+                "split_summary": result.split_summary,
+                "selected_features": result.selected_features,
+            },
+            indent=2,
+            default=str,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

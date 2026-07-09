@@ -1,10 +1,10 @@
 # Credit Default Risk API
 
-This repo is a calibrated, API-backed LendingClub default-risk project. It uses previously accepted/funded loans with resolved outcomes to estimate probability of default with leakage-controlled modeling, chronological validation, saved artifacts, API-backed scoring, batch scoring, Dockerized serving, and tests.
+This repo is a calibrated, API-backed LendingClub default-risk project. It uses previously accepted/funded loans with resolved outcomes to improve current default predictions and ultimately devise more profitable lending policies. Our hope is that we can gather uncaptured signal from previous lending years and improve LendingClub's current business model.
 
 ## Overview
 
-This repo is not production underwriting or a rejected-applicant model.
+This repo is not production underwriting; included is leakage-controlled modeling, chronological validation, class calibration, saved model artifacts, FastAPI-backed scoring operations with batch support, and adequate testing: all containerized in Docker. 
 
 ## Scope
 
@@ -14,7 +14,11 @@ This repo is not production underwriting or a rejected-applicant model.
 - Features are limited to application-time or underwriting-time fields.
 - Post-origination repayment fields are forbidden model inputs.
 
-## Target Definition
+## Data & Target Definition
+
+We wanted to ensure a fair grading without cutting too many of our samples. We started with 2,260,701 previously accepted loans from June 2007 to December 2018 with 35 consumer attributes.
+
+After preprocessing, we ended up using 25 attributes and 1,348,099 loans with known outomes. We purposely did not use non-accepted loans due to counterfactual realized success rate.
 
 **Default** (Bad Outcomes):
 
@@ -36,7 +40,7 @@ Dropped from supervised modeling:
 - `Issued`
 - other blank or unresolved statuses
 
-## Data Setup
+### Setup
 
 Raw LendingClub files are intentionally not committed.
 
@@ -64,7 +68,7 @@ python -m src.preprocessing
 
 # this writes the preprocessing artifact at: `artifacts/accepted_preprocessed.joblib`
 
-python -m src.train
+python train.py
 # Trains the calibrated models and write validation artifacts
 
 
@@ -101,18 +105,18 @@ That writes `reports/test/`. Do not treat locked test as part of the regular ite
 uvicorn api:app --reload
 ```
 
-8. Check liveness and readiness.
-
 ```bash
+#Check liveness and readiness
+
 curl http://localhost:8000/health
 curl http://localhost:8000/ready
-```
 
+"""
 `/health` only checks that the service is up. `/ready` checks that both saved bundles exist and contain the required metadata. It will return `503` before training has produced artifacts, or when Docker is running without mounted artifacts.
+"""
 
-9. Score a single row or batch file.
+# Grade a sample default prediction
 
-```bash
 curl -X POST http://localhost:8000/score \
   -H "Content-Type: application/json" \
   -d '{
@@ -181,16 +185,11 @@ The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default thro
 1. train on the host first and mount `./artifacts`, or
 2. mount an existing `artifacts/` directory produced elsewhere.
 
-## Reporting Methodology
+### Reporting Methodology
 
 - `reports/validation/` is the main path for validation-stage review.
 - `reports/test/` should only be committed after a deliberate locked test run with `evaluate_locked.py`.
 - `reports/smoke/` is for smoke/sample runs.
-- `metrics_summary.json` and `model_card.md` label each report as one of:
-  - full LendingClub local data
-  - smoke-test sample
-  - synthetic/test fixture
-- Validation metrics in the README are example local-run results from the full LendingClub path. They are not the same thing as the smaller committed smoke-test artifacts.
 
 ## Validation Metrics
 
@@ -226,10 +225,6 @@ python -m pytest
 
 The suite covers target construction, leakage prevention, split discipline, calibration outputs, artifact round-tripping, batch scoring, API readiness, and repo-level scope guardrails.
 
-
-> 
->
-
 <details>
 <summary> Runbook: </summary>
 
@@ -240,7 +235,7 @@ For a command-only version of the workflow, see [RUNBOOK.md](RUNBOOK.md).
 
 ## Limitations
 
-- Accepted-loan selection bias remains because the supervised population is accepted/funded loans only.
+- Test set may not be representative of current 2026 lending practices
 - Rejected applications are excluded because repayment outcomes are not observed.
-- The repo demonstrates disciplined modeling and artifact-backed serving, not production deployment controls.
-- Fair-lending validation, monitoring, drift management, and operational controls are out of scope.
+- The repo demonstrates disciplined modeling and artifact serving without production deployment controls.
+- Fair-lending validation, monitoring, and operational controls are not in scope.

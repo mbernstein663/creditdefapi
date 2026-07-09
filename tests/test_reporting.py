@@ -8,8 +8,7 @@ def test_scope_guardrails_block_reintroduced_decision_or_business_terms():
         repo / "api.py",
         repo / "batch.py",
         repo / "evaluate_locked.py",
-        repo / "evaluation.py",
-        repo / "train.py",
+        repo / "src" / "train.py",
         *sorted((repo / "src").glob("*.py")),
     ]
     allowed = [
