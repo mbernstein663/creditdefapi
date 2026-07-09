@@ -1,0 +1,17 @@
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pip install -e .[dev]
+python -m src.preprocessing
+python -m src.train
+python -m pytest
+python evaluate_locked.py
+uvicorn api:app --reload
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+python batch.py docs/demo/sample_batch_input.csv docs/demo/sample_batch_output.csv --api-url http://127.0.0.1:8000
+
+docker build -t credit-default-api .
+docker run --rm -p 8000:8000 -v "${PWD}\artifacts:/app/artifacts" credit-default-api
+curl http://localhost:8000/health
+curl http://localhost:8000/ready

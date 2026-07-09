@@ -182,12 +182,6 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
         f"- Training timestamp: `{metadata.get('training_timestamp', 'n/a')}`",
         f"- Sample rows requested: `{metadata.get('sample_rows_requested', 'n/a')}`",
         "",
-        "## Purpose",
-        "Calibrated default-risk prediction for accepted LendingClub loans with resolved outcomes.",
-        "",
-        "## Scope",
-        "Evaluated on accepted/funded loans only. Not a production underwriting system or rejected-applicant outcome model.",
-        "",
         "## Target",
         f"- Target: `{metadata.get('target_name', TARGET)}`",
         f"- Good statuses: `{_csv(metadata.get('good_statuses'))}`",
@@ -208,10 +202,7 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
         "",
         "## Split Strategy",
         f"`{json.dumps(metadata.get('split_summary', 'not recorded'), default=str)}`",
-        "",
-        "## Known Limits",
-        *[f"- {item}" for item in limits],
-        "",
+        ""
     ])
 
 
