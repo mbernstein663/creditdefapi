@@ -48,6 +48,7 @@ def test_model_card_returns_metadata(monkeypatch):
     assert body["calibration_method"] == "isotonic"
     assert body["artifact_label"] == "Synthetic/test fixture"
     assert "cross_validation_summary" in body
+    assert "locked_test_baseline_comparison" in body
 
 
 def test_frontend_config_returns_top_fields(monkeypatch):

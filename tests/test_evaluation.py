@@ -2,7 +2,7 @@ import json
 
 import pandas as pd
 
-from src.evaluation import generate_evaluation_reports
+from src.evaluation import baseline_comparison_metrics, generate_evaluation_reports
 from tests.test_artifacts_batch_scoring import accepted_bundle
 
 
@@ -79,3 +79,21 @@ def test_generate_evaluation_reports_creates_required_outputs(tmp_path):
 
     model_card = outputs["model_card"].read_text(encoding="utf-8")
     assert "Synthetic/test fixture" in model_card
+    assert "## Split Strategy\n```json" in model_card
+    assert '"split": "train"' in model_card
+
+
+def test_baseline_comparison_uses_train_calibration_only():
+    frame = _frame()
+    splits = {
+        "train": frame.iloc[:10].copy(),
+        "calibration": frame.iloc[10:15].copy(),
+        "test": frame.iloc[15:].copy(),
+    }
+    final_p_default = pd.Series([0.2] * len(splits["test"]))
+
+    rows = baseline_comparison_metrics(accepted_bundle(), splits, final_p_default)
+    names = {row["model_name"] for row in rows}
+
+    assert {"logistic", "base_rate", "grade_historical_rate", "sub_grade_historical_rate"} <= names
+    assert all(row.get("rows") == len(splits["test"]) for row in rows if row["model_role"] != "baseline_unavailable")

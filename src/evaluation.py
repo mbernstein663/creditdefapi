@@ -17,7 +17,7 @@ from sklearn.metrics import precision_recall_curve, roc_curve
 from .artifacts import load_model_bundle
 from .calibration import calibration_summary
 from .config import ACCEPTED_CSV, DEFAULT_ACCEPTED_BUNDLE, REPORT_DIR, TARGET
-from .models import predict_raw_default
+from .models import fit_model, predict_raw_default
 from .preprocessing import prepare_accepted_loans, split_chronological
 
 matplotlib.use("Agg")
@@ -121,6 +121,40 @@ def _csv(values) -> str:
     return ", ".join(values or []) or "not recorded"
 
 
+def _metric_row(model_name: str, y_true, p_default, model_role: str) -> dict:
+    y = pd.Series(y_true).reset_index(drop=True)
+    p = pd.Series(p_default).reset_index(drop=True)
+    summary = calibration_summary(y, p)
+    return {
+        "model_name": model_name,
+        "model_role": model_role,
+        "rows": int(len(y.dropna())),
+        "observed_default_rate": summary["actual_default_rate"],
+        "mean_predicted_default_rate": summary["mean_predicted_default"],
+        "roc_auc": summary["roc_auc"],
+        "pr_auc": summary["pr_auc"],
+        "brier_score": summary["brier_score"],
+        "log_loss": summary["log_loss"],
+    }
+
+
+def _json_block(value) -> list[str]:
+    if not value:
+        return ["`not recorded`"]
+    return ["```json", json.dumps(value, indent=2, default=str), "```"]
+
+
+def _markdown_table(rows: list[dict], columns: list[tuple[str, str]]) -> list[str]:
+    if not rows:
+        return ["not recorded"]
+    header = "| " + " | ".join(label for _, label in columns) + " |"
+    divider = "| " + " | ".join("---" for _ in columns) + " |"
+    lines = [header, divider]
+    for row in rows:
+        lines.append("| " + " | ".join(_fmt(row.get(key)) for key, _ in columns) + " |")
+    return lines
+
+
 def _artifact_status(metadata: dict) -> tuple[str, str]:
     context = metadata.get("artifact_data_context")
     if context == "full_lendingclub_local":
@@ -154,15 +188,49 @@ def _split_rows(metadata: dict) -> list[str]:
     return [f"- {name.title()}: `{counts.get(name, 'n/a')}`" for name in order if name in counts]
 
 
-def _model_card(bundle, stage: str, metrics: dict) -> str:
-    metadata = bundle.metadata or {}
-    limits = metadata.get("limitations") or [
+def _split_table(metadata: dict) -> list[str]:
+    rows = metadata.get("split_summary") or []
+    return _markdown_table(
+        rows,
+        [
+            ("split", "Split"),
+            ("rows", "Rows"),
+            ("default_rate", "Default Rate"),
+            ("date_min", "Date Min"),
+            ("date_max", "Date Max"),
+        ],
+    )
+
+
+def _baseline_table_rows(metrics: dict) -> list[dict]:
+    return metrics.get("baseline_comparison") or []
+
+
+def _limitations(metadata: dict) -> list[str]:
+    required = [
         "accepted-loan selection bias",
+        "rejected applications are unlabeled and excluded from supervised default modeling",
         "unresolved outcomes excluded",
-        "no rejected-applicant outcome prediction",
+        "not production underwriting",
         "no fair-lending validation",
     ]
+    return list(dict.fromkeys((metadata.get("limitations") or []) + required))
+
+
+def _evidence_note(stage: str) -> str:
+    if stage == "test":
+        return (
+            "Validation was used for model, hyperparameter, calibration, and display selection. "
+            "This locked test report was generated after selection and is the final committed model evidence."
+        )
+    return "Validation reports are model-selection evidence, not final held-out performance claims."
+
+
+def _model_card(bundle, stage: str, metrics: dict) -> str:
+    metadata = bundle.metadata or {}
+    limits = _limitations(metadata)
     artifact_label, artifact_note = _artifact_status(metadata)
+    sample_rows = metadata.get("sample_rows_requested")
     metric_lines = [
         f"- Rows: `{metrics['rows']}`",
         f"- Observed default rate: `{_fmt(metrics['observed_default_rate'])}`",
@@ -175,7 +243,18 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
     return "\n".join([
         "# Model Card",
         "",
+        "## Artifact Status",
+        f"- Evidence label: `{artifact_label}`",
+        f"- Evidence note: {artifact_note}",
+        f"- Evaluation split: `{stage}`",
         f"- Training timestamp: `{metadata.get('training_timestamp', 'n/a')}`",
+        f"- Sample rows requested: `{sample_rows}`",
+        "",
+        "## Purpose",
+        "Calibrated default-risk prediction for accepted LendingClub loans with resolved outcomes.",
+        "",
+        "## Scope",
+        "Evaluated on accepted/funded loans only. Not a production underwriting system or rejected-applicant outcome model.",
         "",
         "## Target",
         f"- Target: `{metadata.get('target_name', TARGET)}`",
@@ -186,19 +265,52 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
         "## Dataset Splits",
         *_split_rows(metadata),
         "",
+        "## Chronological Split Details",
+        *_split_table(metadata),
+        "",
         "## Model",
         f"- Model type: `{metadata.get('selected_model_type', bundle.model_type)}`",
         f"- Selected model: `{metrics.get('selected_model')}`",
         f"- Calibration method: `{metrics.get('calibration_method')}`",
         f"- Feature count: `{len(getattr(bundle, 'feature_columns', []) or [])}`",
         "",
+        "## Evidence Use",
+        _evidence_note(stage),
+        "",
         f"## {stage.title()} Metrics",
         *metric_lines,
-        ""
+        "",
+        "## Baseline Comparison",
+        *_markdown_table(
+            _baseline_table_rows(metrics),
+            [
+                ("model_name", "Model"),
+                ("model_role", "Role"),
+                ("roc_auc", "ROC-AUC"),
+                ("pr_auc", "PR-AUC"),
+                ("brier_score", "Brier"),
+                ("log_loss", "Log Loss"),
+                ("mean_predicted_default_rate", "Mean PD"),
+            ],
+        ),
+        "",
+        "## Split Strategy",
+        *_json_block(metadata.get("split_summary")),
+        "",
+        "## Known Limits",
+        *(f"- {limit}" for limit in limits),
+        "",
     ])
 
 
-def generate_evaluation_reports(bundle, frame: pd.DataFrame, p_default, output_dir: str | Path, stage: str) -> dict[str, Path]:
+def generate_evaluation_reports(
+    bundle,
+    frame: pd.DataFrame,
+    p_default,
+    output_dir: str | Path,
+    stage: str,
+    baseline_comparison: list[dict] | None = None,
+) -> dict[str, Path]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -225,7 +337,9 @@ def generate_evaluation_reports(bundle, frame: pd.DataFrame, p_default, output_d
         "artifact_note": artifact_note,
         "sample_rows_requested": metadata.get("sample_rows_requested"),
         "split_row_counts": metadata.get("split_row_counts"),
+        "split_summary": metadata.get("split_summary"),
         "limitations": metadata.get("limitations"),
+        "baseline_comparison": baseline_comparison or [],
     }
     lift = _risk_decile_lift(frame, p_default)
     deciles = pd.DataFrame(summary["deciles"])
@@ -233,7 +347,12 @@ def generate_evaluation_reports(bundle, frame: pd.DataFrame, p_default, output_d
 
     files = {
         "metrics_summary": output_dir / "metrics_summary.json",
+        "calibration_deciles": output_dir / "calibration_deciles.csv",
         "risk_decile_lift": output_dir / "risk_decile_lift.csv",
+        "roc_curve": output_dir / "roc_curve.csv",
+        "pr_curve": output_dir / "pr_curve.csv",
+        "baseline_comparison_csv": output_dir / "baseline_comparison.csv",
+        "baseline_comparison_json": output_dir / "baseline_comparison.json",
         "reliability_plot": output_dir / "reliability_plot.png",
         "roc_curve_plot": output_dir / "roc_curve.png",
         "pr_curve_plot": output_dir / "pr_curve.png",
@@ -241,12 +360,67 @@ def generate_evaluation_reports(bundle, frame: pd.DataFrame, p_default, output_d
     }
 
     _write_json(files["metrics_summary"], metrics)
+    deciles.to_csv(files["calibration_deciles"], index=False)
     lift.to_csv(files["risk_decile_lift"], index=False)
+    roc_df.to_csv(files["roc_curve"], index=False)
+    pr_df.to_csv(files["pr_curve"], index=False)
+    pd.DataFrame(baseline_comparison or []).to_csv(files["baseline_comparison_csv"], index=False)
+    _write_json(files["baseline_comparison_json"], {"models": baseline_comparison or []})
     _plot_reliability(files["reliability_plot"], deciles)
     _plot_curve(files["roc_curve_plot"], roc_df, "fpr", "tpr", "ROC Curve", "False Positive Rate", "True Positive Rate")
     _plot_curve(files["pr_curve_plot"], pr_df, "recall", "precision", "Precision-Recall Curve", "Recall", "Precision")
     files["model_card"].write_text(_model_card(bundle, stage, metrics), encoding="utf-8")
     return files
+
+
+def _base_rate_from_metadata(metadata: dict, fit_frame: pd.DataFrame) -> float:
+    rates = metadata.get("split_default_rates") or {}
+    for split in ["train", "calibration"]:
+        if rates.get(split) is not None:
+            return float(rates[split])
+    return float(fit_frame[TARGET].mean())
+
+
+def _group_rate_predictions(fit_frame: pd.DataFrame, test_frame: pd.DataFrame, column: str, fallback_rate: float):
+    rates = fit_frame.groupby(column)[TARGET].mean()
+    return test_frame[column].map(rates).fillna(fallback_rate).astype(float).to_numpy()
+
+
+def baseline_comparison_metrics(bundle, splits: dict[str, pd.DataFrame], final_p_default) -> list[dict]:
+    train_calibration = pd.concat([splits["train"], splits["calibration"]], ignore_index=True)
+    test = splits["test"]
+    base_rate = _base_rate_from_metadata(bundle.metadata or {}, train_calibration)
+    selected_name = (bundle.metadata or {}).get("selected_model_name") or "selected_model"
+    rows = [
+        _metric_row(selected_name, test[TARGET], final_p_default, "final_model"),
+        _metric_row("base_rate", test[TARGET], np.full(len(test), base_rate), "baseline"),
+    ]
+
+    if train_calibration[TARGET].nunique() >= 2:
+        try:
+            logistic = fit_model(train_calibration, bundle.feature_columns, "logistic")
+            rows.append(
+                _metric_row(
+                    "logistic_regression",
+                    test[TARGET],
+                    predict_raw_default(logistic, test, bundle.feature_columns),
+                    "baseline",
+                )
+            )
+        except Exception as exc:
+            rows.append({"model_name": "logistic_regression", "model_role": "baseline_unavailable", "error": str(exc)})
+
+    for column in ["grade", "sub_grade"]:
+        if column in train_calibration.columns and column in test.columns:
+            rows.append(
+                _metric_row(
+                    f"{column}_historical_rate",
+                    test[TARGET],
+                    _group_rate_predictions(train_calibration, test, column, base_rate),
+                    "baseline",
+                )
+            )
+    return rows
 
 
 def evaluate_bundle_on_split(

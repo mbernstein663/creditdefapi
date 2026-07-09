@@ -36,7 +36,7 @@ def accepted_bundle(metadata=None, feature_columns=None):
             "risk_band_thresholds": {"low_max": 0.08, "medium_max": 0.18},
             "source_fingerprint": {"sha256": "abc", "size_bytes": 1},
             "split_manifest": {"test_ids": ["1"]},
-            "split_summary": [],
+            "split_summary": [{"split": "train", "rows": 1}],
             "target_definition": "resolved accepted/funded loan default target",
             "forbidden_feature_columns": ["loan_status"],
             "artifact_data_context": "synthetic_test_fixture",

@@ -5,7 +5,7 @@ import json
 
 from src.artifacts import file_fingerprint, load_model_bundle, save_model_bundle
 from src.config import ACCEPTED_CSV, DEFAULT_ACCEPTED_BUNDLE, DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE, REPORT_DIR
-from src.evaluation import generate_evaluation_reports
+from src.evaluation import baseline_comparison_metrics, generate_evaluation_reports
 from src.models import predict_raw_default
 from src.preprocessing import load_preprocessed_accepted_loans, preprocess_accepted_loans, save_preprocessed_accepted_loans
 
@@ -41,9 +41,11 @@ def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED
 
     raw = predict_raw_default(bundle.model, test_df, bundle.feature_columns)
     p_default = bundle.calibrator.predict(raw)
+    baselines = baseline_comparison_metrics(bundle, preprocessing.splits, p_default)
     report_dir = REPORT_DIR / "smoke" / "test" if sample else REPORT_DIR / "test"
-    outputs = generate_evaluation_reports(bundle, test_df, p_default, report_dir, "test")
+    outputs = generate_evaluation_reports(bundle, test_df, p_default, report_dir, "test", baseline_comparison=baselines)
     bundle.metadata["locked_test_metrics_summary"] = json.loads(outputs["metrics_summary"].read_text(encoding="utf-8"))
+    bundle.metadata["locked_test_baseline_comparison"] = baselines
     save_model_bundle(bundle, bundle_path)
     return outputs["metrics_summary"]
 

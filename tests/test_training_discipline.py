@@ -156,8 +156,12 @@ def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monk
 
     assert output.name == "metrics_summary.json"
     assert summary["rows"] > 0
+    assert summary["baseline_comparison"]
     assert bundle.metadata["locked_test_metrics_summary"]["evaluation_split"] == "test"
+    assert bundle.metadata["locked_test_baseline_comparison"]
     assert (tmp_path / "reports" / "test" / "model_card.md").exists()
+    assert (tmp_path / "reports" / "test" / "baseline_comparison.csv").exists()
+    assert (tmp_path / "reports" / "test" / "baseline_comparison.json").exists()
 
 
 def test_locked_evaluation_sample_writes_smoke_reports(tmp_path, monkeypatch):

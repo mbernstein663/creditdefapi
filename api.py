@@ -82,6 +82,7 @@ def _model_card_payload(bundle) -> dict:
         "cross_validation_summary": metadata.get("cross_validation_summary"),
         "validation_metrics_summary": metadata.get("validation_metrics_summary"),
         "locked_test_metrics_summary": metadata.get("locked_test_metrics_summary"),
+        "locked_test_baseline_comparison": metadata.get("locked_test_baseline_comparison"),
         "frontend_fields": metadata.get("frontend_fields"),
         "feature_importance": metadata.get("feature_importance"),
         "limitations": metadata.get("limitations"),
