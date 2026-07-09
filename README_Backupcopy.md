@@ -6,6 +6,12 @@ This repo is a calibrated, API-backed LendingClub default-risk project. It uses 
 
 This repo is not production underwriting; included is leakage-controlled modeling, chronological validation, class calibration, saved model artifacts, FastAPI-backed scoring operations with batch support, and adequate testing: all containerized in Docker. 
 
+- Supervised modeling uses accepted/funded loans with resolved outcomes only.
+- The target is binary `default`.
+- Outputs are calibrated `p_default`
+- Features are limited to application-time or underwriting-time fields.
+- Post-origination repayment fields are forbidden model inputs.
+
 ## Scope
 
 - Supervised modeling uses accepted/funded loans with resolved outcomes only.
@@ -46,7 +52,7 @@ Raw LendingClub files are intentionally not committed.
 
 Default expected path at repo root:
 
-- `./accepted_2007_to_2018Q4.csv`
+`./accepted_2007_to_2018Q4.csv`
 
 The active default-risk pipeline requires the accepted-loan file only. Raw LendingClub CSVs are intentionally not committed. Obtain the dataset from a public LendingClub archive or mirror, then place the accepted-loan file at the exact filename above, or pass a custom path with `--csv`.
 
@@ -56,21 +62,26 @@ Requires `python` on local path.
 
 ```bash
 # create venv and install dependencies
-
 python -m venv .venv
+# PowerShell:
+.\.venv\Scripts\Activate.ps1
+# Git Bash:
 . .venv/Scripts/activate
 python -m pip install -r requirements.txt
 python -m pip install -e .[dev]
 
-# expects accepted-loan CSV at `./accepted_2007_to_2018Q4.csv`.
-
 python -m src.preprocessing
+python -m src.train
+
+"""
+expects accepted-loan CSV at `./accepted_2007_to_2018Q4.csv`.
+"""
 
 # this writes the preprocessing artifact at: `artifacts/accepted_preprocessed.joblib`
+python -m src.preprocessing
 
-python train.py
 # Trains the calibrated models and write validation artifacts
-
+python train.py
 
 HOW IS THE BEST MODEL CHOSEN??
 ```
@@ -81,7 +92,7 @@ This writes:
 - `artifacts/frontend_model.joblib`
 - validation reports under `reports/validation/`
 
-5. Review validation results.
+Review validation results.
 
 - `reports/validation/metrics_summary.json`
 - `reports/validation/model_card.md`
@@ -91,7 +102,7 @@ This writes:
 
 The committed validation evidence is meant to be readable, not exhaustive. Any large-data metrics shown in the README are example local-run results, not a promise that the committed CSVs include the full historical dataset.
 
-6. Optionally run the locked test evaluation later, once model selection is finished.
+To run the locked test evaluation later, once model selection is finished.
 
 ```bash
 python evaluate_locked.py
@@ -99,15 +110,13 @@ python evaluate_locked.py
 
 That writes `reports/test/`. Do not treat locked test as part of the regular iteration loop.
 
-7. Start the API.
-
 ```bash
+# Start the api
 uvicorn api:app --reload
 ```
 
 ```bash
 #Check liveness and readiness
-
 curl http://localhost:8000/health
 curl http://localhost:8000/ready
 
@@ -152,9 +161,9 @@ curl -X POST http://localhost:8000/score \
 python batch.py docs/demo/sample_batch_input.csv docs/demo/sample_batch_output.csv --api-url http://127.0.0.1:8000
 ```
 
-## API
+Look in `docs/demo/` for demo API tests.
 
-Endpoints:
+## API Endpoints
 
 - `GET /health`
 - `GET /ready`
@@ -191,19 +200,17 @@ The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default thro
 - `reports/test/` should only be committed after a deliberate locked test run with `evaluate_locked.py`.
 - `reports/smoke/` is for smoke/sample runs.
 
-## Validation Metrics
+## Test Metrics
 
-The committed validation report is a run produced from user-supplied LendingClub data. 
+Current test metrics from local run:
 
-Current example validation metrics from a full local run:
-
-- Rows: `187864`
-- Observed default rate: `0.2399`
-- Mean predicted default rate: `0.2335`
-- ROC-AUC: `0.6975`
-- PR-AUC: `0.4042`
-- Brier score: `0.1662`
-- Log loss: `0.5050`
+- Rows: `134273`
+- Observed default rate: `0.1989`
+- Mean predicted default rate: `0.2223`
+- ROC-AUC: `0.7092`
+- PR-AUC: `0.3579`
+- Brier score: `0.1463`
+- Log loss: `0.4568`
 
 Those files are intentionally small enough to review in git. Raw data and model binaries remain uncommitted.
 
@@ -225,14 +232,7 @@ python -m pytest
 
 The suite covers target construction, leakage prevention, split discipline, calibration outputs, artifact round-tripping, batch scoring, API readiness, and repo-level scope guardrails.
 
-## Limitations
-
-- Test set may not be representative of current 2026 lending practices
-- Rejected applications are excluded because repayment outcomes are not observed.
-- The repo demonstrates disciplined modeling and artifact serving without production deployment controls.
-- Fair-lending validation, monitoring, and operational controls are not in scope.
-
-## Chronological Split Details
+## Split Details
 
 | Split | Rows | Default Rate | Date Min | Date Max |
 | --- | --- | --- | --- | --- |
@@ -240,3 +240,10 @@ The suite covers target construction, leakage prevention, split discipline, cali
 | calibration | 196607 | 0.2265 | 2016-01-01T00:00:00 | 2016-07-01T00:00:00 |
 | validation | 187864 | 0.2399 | 2016-08-01T00:00:00 | 2017-06-01T00:00:00 |
 | test | 134273 | 0.1989 | 2017-07-01T00:00:00 | 2018-12-01T00:00:00 |
+
+## Limitations
+
+- Test set may not be representative of current 2026 lending practices
+- Rejected applications are excluded because repayment outcomes are not observed.
+- The repo demonstrates disciplined modeling and artifact serving without production deployment controls.
+- Fair-lending validation, monitoring, and operational controls are not in scope.
