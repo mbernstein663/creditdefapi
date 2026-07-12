@@ -40,7 +40,7 @@ class ProbabilityCalibrator:
             self.model = None
             return self
         if self.method == "sigmoid":
-            self.model = LogisticRegression(max_iter=1000).fit(raw.reshape(-1, 1), target)
+            self.model = LogisticRegression(max_iter=2000, solver="liblinear").fit(raw.reshape(-1, 1), target)
             return self
         if self.method != "isotonic":
             raise ValueError(f"unknown calibration method: {self.method}")

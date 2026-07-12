@@ -227,6 +227,30 @@ python -m evaluate_locked
 
 The locked test report compares the selected calibrated model against simple baselines fit only on train/calibration rows: base-rate, logistic regression when feasible, and historical grade/sub_grade rates when those fields are available.
 
+## Finalized Test Set Performance
+
+Locked test performance from `reports/test/metrics_summary.json`:
+
+| Metric | Value |
+| --- | ---: |
+| Rows | 134,273 |
+| Observed default rate | 0.1989 |
+| Mean predicted default rate | 0.2223 |
+| ROC-AUC | 0.7092 |
+| PR-AUC | 0.3579 |
+| Brier score | 0.1463 |
+| Log loss | 0.4568 |
+
+Baseline comparison:
+
+| Model | ROC-AUC | PR-AUC | Brier | Log Loss |
+| --- | ---: | ---: | ---: | ---: |
+| Final calibrated histogram gradient boosting | 0.7092 | 0.3579 | 0.1463 | 0.4568 |
+| Base rate | 0.5000 | 0.1989 | 0.1595 | 0.4995 |
+| Logistic regression | 0.7068 | 0.3551 | 0.1462 | 0.4563 |
+| Grade historical rate | 0.6759 | 0.3044 | 0.1492 | 0.4660 |
+| Sub-grade historical rate | 0.6853 | 0.3248 | 0.1487 | 0.4639 |
+
 Raw data and model binaries remain uncommitted.
 
 ## Demo Files

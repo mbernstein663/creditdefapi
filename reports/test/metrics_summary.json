@@ -12,7 +12,7 @@
   "model_type": "calibrated_hist_gradient_boosting",
   "calibration_method": "isotonic",
   "target_name": "default",
-  "training_timestamp": "2026-07-09T22:24:27.561921+00:00",
+  "training_timestamp": "2026-07-12T02:34:32.573834+00:00",
   "artifact_data_context": "full_lendingclub_local",
   "artifact_label": "Full LendingClub local data",
   "artifact_note": "Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.",

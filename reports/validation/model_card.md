@@ -4,7 +4,7 @@
 - Evidence label: `Full LendingClub local data`
 - Evidence note: Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.
 - Evaluation split: `validation`
-- Training timestamp: `2026-07-09T21:07:20.724803+00:00`
+- Training timestamp: `2026-07-12T03:15:34.918109+00:00`
 - Sample rows requested: `None`
 
 ## Purpose
@@ -20,18 +20,18 @@ Evaluated on accepted/funded loans only. Not a production underwriting system or
 - Dropped statuses: `, Current, In Grace Period, Issued, Late (16-30 days), Late (31-120 days)`
 
 ## Dataset Splits
-- Train: `829355`
-- Calibration: `196607`
-- Validation: `187864`
-- Test: `134273`
+- Train: `24`
+- Calibration: `6`
+- Validation: `6`
+- Test: `4`
 
 ## Chronological Split Details
 | Split | Rows | Default Rate | Date Min | Date Max |
 | --- | --- | --- | --- | --- |
-| train | 829355 | 0.1846 | 2007-06-01T00:00:00 | 2015-12-01T00:00:00 |
-| calibration | 196607 | 0.2265 | 2016-01-01T00:00:00 | 2016-07-01T00:00:00 |
-| validation | 187864 | 0.2399 | 2016-08-01T00:00:00 | 2017-06-01T00:00:00 |
-| test | 134273 | 0.1989 | 2017-07-01T00:00:00 | 2018-12-01T00:00:00 |
+| train | 24 | 0.2500 | 2015-01-01T00:00:00 | 2016-12-01T00:00:00 |
+| calibration | 6 | 0.3333 | 2017-01-01T00:00:00 | 2017-06-01T00:00:00 |
+| validation | 6 | 0.1667 | 2017-07-01T00:00:00 | 2017-12-01T00:00:00 |
+| test | 4 | 0.2500 | 2018-01-01T00:00:00 | 2018-04-01T00:00:00 |
 
 ## Model
 - Model type: `calibrated_hist_gradient_boosting`
@@ -43,13 +43,13 @@ Evaluated on accepted/funded loans only. Not a production underwriting system or
 Validation reports are model-selection evidence, not final held-out performance claims.
 
 ## Validation Metrics
-- Rows: `187864`
-- Observed default rate: `0.2399`
-- Mean predicted default rate: `0.2335`
-- ROC-AUC: `0.6975`
-- PR-AUC: `0.4042`
-- Brier score: `0.1662`
-- Log loss: `0.5050`
+- Rows: `6`
+- Observed default rate: `0.1667`
+- Mean predicted default rate: `0.3333`
+- ROC-AUC: `0.5000`
+- PR-AUC: `0.1667`
+- Brier score: `0.1667`
+- Log loss: `0.5210`
 
 ## Baseline Comparison
 not recorded
@@ -59,31 +59,31 @@ not recorded
 [
   {
     "split": "train",
-    "rows": 829355,
-    "default_rate": 0.18455908507213437,
-    "date_min": "2007-06-01T00:00:00",
-    "date_max": "2015-12-01T00:00:00"
+    "rows": 24,
+    "default_rate": 0.25,
+    "date_min": "2015-01-01T00:00:00",
+    "date_max": "2016-12-01T00:00:00"
   },
   {
     "split": "calibration",
-    "rows": 196607,
-    "default_rate": 0.22647718545117926,
-    "date_min": "2016-01-01T00:00:00",
-    "date_max": "2016-07-01T00:00:00"
-  },
-  {
-    "split": "validation",
-    "rows": 187864,
-    "default_rate": 0.2398916237278031,
-    "date_min": "2016-08-01T00:00:00",
+    "rows": 6,
+    "default_rate": 0.3333333333333333,
+    "date_min": "2017-01-01T00:00:00",
     "date_max": "2017-06-01T00:00:00"
   },
   {
-    "split": "test",
-    "rows": 134273,
-    "default_rate": 0.19885606190373345,
+    "split": "validation",
+    "rows": 6,
+    "default_rate": 0.16666666666666666,
     "date_min": "2017-07-01T00:00:00",
-    "date_max": "2018-12-01T00:00:00"
+    "date_max": "2017-12-01T00:00:00"
+  },
+  {
+    "split": "test",
+    "rows": 4,
+    "default_rate": 0.25,
+    "date_min": "2018-01-01T00:00:00",
+    "date_max": "2018-04-01T00:00:00"
   }
 ]
 ```
@@ -91,6 +91,7 @@ not recorded
 ## Known Limits
 - accepted-loan selection bias
 - rejected applications are unlabeled and excluded from supervised default modeling
+- not validated for production underwriting or fair-lending use
 - unresolved outcomes excluded
 - not production underwriting
 - no fair-lending validation

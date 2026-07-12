@@ -80,17 +80,17 @@ def build_tree_preprocessor(feature_columns: list[str]) -> ColumnTransformer:
 def build_model(candidate_name: str, feature_columns: list[str]) -> Pipeline:
     if candidate_name == "logistic_balanced":
         classifier = LogisticRegression(
-            max_iter=500,
+            max_iter=2000,
             class_weight="balanced",
-            solver="saga",
+            solver="liblinear",
             random_state=42,
         )
         return Pipeline([("preprocess", build_preprocessor(feature_columns)), ("classifier", classifier)])
     if candidate_name == "logistic":
         classifier = LogisticRegression(
-            max_iter=500,
+            max_iter=2000,
             class_weight=None,
-            solver="saga",
+            solver="liblinear",
             random_state=42,
         )
         return Pipeline([("preprocess", build_preprocessor(feature_columns)), ("classifier", classifier)])
