@@ -47,7 +47,18 @@ def _frontend_output_path(output_path: Path, sample):
     )
 
 
-def _artifact_data_context(sample: int | None) -> str:
+ALLOWED_ARTIFACT_DATA_CONTEXTS = {
+    "full_lendingclub_local",
+    "smoke_sample",
+    "synthetic_test_fixture",
+}
+
+
+def _artifact_data_context(sample: int | None, artifact_data_context: str | None = None) -> str:
+    if artifact_data_context is not None:
+        if artifact_data_context not in ALLOWED_ARTIFACT_DATA_CONTEXTS:
+            raise ValueError(f"unknown artifact_data_context: {artifact_data_context}")
+        return artifact_data_context
     return "smoke_sample" if sample else "full_lendingclub_local"
 
 
@@ -333,10 +344,18 @@ def _build_bundle(
     )
 
 
-def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUNDLE, sample=None, validation_only=False, config_path=None):
+def train_accepted_model(
+    csv_path=ACCEPTED_CSV,
+    output_path=DEFAULT_ACCEPTED_BUNDLE,
+    sample=None,
+    validation_only=False,
+    config_path=None,
+    artifact_data_context: str | None = None,
+):
     output_path, report_dir = _paths(output_path, sample)
     frontend_output_path = _frontend_output_path(output_path, sample)
     report_dir.mkdir(parents=True, exist_ok=True)
+    artifact_context = _artifact_data_context(sample, artifact_data_context)
     training_config = load_training_config(config_path)
     model_candidates = training_config["models"]
     selected_model_name = training_config["selected_model"]
@@ -434,7 +453,7 @@ def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUN
             feature_importance=feature_importance,
             cross_validation_summary=frontend_cross_validation_summary,
             model_version=f"{MODEL_VERSION}-frontend",
-            artifact_data_context=_artifact_data_context(sample),
+            artifact_data_context=artifact_context,
             sample_rows_requested=sample,
         )
         save_model_bundle(frontend_bundle, frontend_output_path)
@@ -454,7 +473,7 @@ def train_accepted_model(csv_path=ACCEPTED_CSV, output_path=DEFAULT_ACCEPTED_BUN
         frontend_fields=frontend_fields,
         feature_importance=feature_importance,
         cross_validation_summary=cross_validation_summary,
-        artifact_data_context=_artifact_data_context(sample),
+        artifact_data_context=artifact_context,
         sample_rows_requested=sample,
     )
     saved = save_model_bundle(bundle, output_path)

@@ -1,56 +1,56 @@
 {
   "stage": "validation",
   "evaluation_split": "validation",
-  "rows": 6,
-  "observed_default_rate": 0.16666666666666666,
-  "mean_predicted_default_rate": 0.3333333333333333,
-  "roc_auc": 0.5,
-  "pr_auc": 0.16666666666666666,
-  "brier_score": 0.1666666666666667,
-  "log_loss": 0.5209896382014885,
-  "selected_model": "hist_gradient_boosting",
-  "model_type": "calibrated_hist_gradient_boosting",
+  "rows": 187864,
+  "observed_default_rate": 0.2398916237278031,
+  "mean_predicted_default_rate": 0.2392073733288274,
+  "roc_auc": 0.6900856540253746,
+  "pr_auc": 0.3954063228699785,
+  "brier_score": 0.16741883080342668,
+  "log_loss": 0.5084275959104172,
+  "selected_model": "random_forest",
+  "model_type": "calibrated_random_forest",
   "calibration_method": "isotonic",
   "target_name": "default",
-  "training_timestamp": "2026-07-12T03:15:34.918109+00:00",
+  "training_timestamp": "2026-07-12T04:46:23.382687+00:00",
   "artifact_data_context": "full_lendingclub_local",
   "artifact_label": "Full LendingClub local data",
   "artifact_note": "Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.",
   "sample_rows_requested": null,
   "split_row_counts": {
-    "train": 24,
-    "calibration": 6,
-    "validation": 6,
-    "test": 4
+    "train": 829355,
+    "calibration": 196607,
+    "validation": 187864,
+    "test": 134273
   },
   "split_summary": [
     {
       "split": "train",
-      "rows": 24,
-      "default_rate": 0.25,
-      "date_min": "2015-01-01T00:00:00",
-      "date_max": "2016-12-01T00:00:00"
+      "rows": 829355,
+      "default_rate": 0.18455908507213437,
+      "date_min": "2007-06-01T00:00:00",
+      "date_max": "2015-12-01T00:00:00"
     },
     {
       "split": "calibration",
-      "rows": 6,
-      "default_rate": 0.3333333333333333,
-      "date_min": "2017-01-01T00:00:00",
-      "date_max": "2017-06-01T00:00:00"
+      "rows": 196607,
+      "default_rate": 0.22647718545117926,
+      "date_min": "2016-01-01T00:00:00",
+      "date_max": "2016-07-01T00:00:00"
     },
     {
       "split": "validation",
-      "rows": 6,
-      "default_rate": 0.16666666666666666,
-      "date_min": "2017-07-01T00:00:00",
-      "date_max": "2017-12-01T00:00:00"
+      "rows": 187864,
+      "default_rate": 0.2398916237278031,
+      "date_min": "2016-08-01T00:00:00",
+      "date_max": "2017-06-01T00:00:00"
     },
     {
       "split": "test",
-      "rows": 4,
-      "default_rate": 0.25,
-      "date_min": "2018-01-01T00:00:00",
-      "date_max": "2018-04-01T00:00:00"
+      "rows": 134273,
+      "default_rate": 0.19885606190373345,
+      "date_min": "2017-07-01T00:00:00",
+      "date_max": "2018-12-01T00:00:00"
     }
   ],
   "limitations": [

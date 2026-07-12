@@ -235,19 +235,19 @@ Locked test performance from `reports/test/metrics_summary.json`:
 | --- | ---: |
 | Rows | 134,273 |
 | Observed default rate | 0.1989 |
-| Mean predicted default rate | 0.2223 |
-| ROC-AUC | 0.7092 |
-| PR-AUC | 0.3579 |
-| Brier score | 0.1463 |
-| Log loss | 0.4568 |
+| Mean predicted default rate | 0.2257 |
+| ROC-AUC | 0.6998 |
+| PR-AUC | 0.3470 |
+| Brier score | 0.1479 |
+| Log loss | 0.4613 |
 
 Baseline comparison:
 
 | Model | ROC-AUC | PR-AUC | Brier | Log Loss |
 | --- | ---: | ---: | ---: | ---: |
-| Final calibrated histogram gradient boosting | 0.7092 | 0.3579 | 0.1463 | 0.4568 |
+| Final calibrated random forest | 0.6998 | 0.3470 | 0.1479 | 0.4613 |
 | Base rate | 0.5000 | 0.1989 | 0.1595 | 0.4995 |
-| Logistic regression | 0.7068 | 0.3551 | 0.1462 | 0.4563 |
+| Logistic regression | 0.7080 | 0.3567 | 0.1458 | 0.4554 |
 | Grade historical rate | 0.6759 | 0.3044 | 0.1492 | 0.4660 |
 | Sub-grade historical rate | 0.6853 | 0.3248 | 0.1487 | 0.4639 |
 

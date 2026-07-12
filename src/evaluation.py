@@ -228,6 +228,7 @@ def _evidence_note(stage: str) -> str:
 
 def _test_model_card(bundle, metrics: dict) -> str:
     metadata = bundle.metadata or {}
+    artifact_label, artifact_note = _artifact_status(metadata)
     metric_lines = [
         f"- Rows: `{metrics['rows']}`",
         f"- Observed default rate: `{_fmt(metrics['observed_default_rate'])}`",
@@ -239,6 +240,11 @@ def _test_model_card(bundle, metrics: dict) -> str:
     ]
     return "\n".join([
         "# Model Card",
+        "",
+        "## Artifact Status",
+        f"- Evidence label: `{artifact_label}`",
+        f"- Evidence note: {artifact_note}",
+        f"- Evaluation split: `test`",
         "",
         f"Training timestamp: `{metadata.get('training_timestamp', 'n/a')}`",
         "",

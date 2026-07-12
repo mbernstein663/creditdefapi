@@ -126,9 +126,9 @@ def test_test_model_card_uses_committed_locked_report_format(tmp_path):
     )
     model_card = outputs["model_card"].read_text(encoding="utf-8")
 
-    assert model_card.startswith("# Model Card\n\nTraining timestamp:")
+    assert model_card.startswith("# Model Card\n\n## Artifact Status")
+    assert "Synthetic/test fixture" in model_card
     assert "## Dataset Splits\n\n- Train: `10`" in model_card
     assert "## Test Metrics\n\n- Rows:" in model_card
     assert "## Baseline Comparison\n\n| Model | Role | ROC-AUC | PR-AUC | Brier | Log Loss | Mean PD |" in model_card
-    assert "## Artifact Status" not in model_card
     assert "## Split Strategy" not in model_card

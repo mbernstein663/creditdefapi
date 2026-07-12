@@ -1,4 +1,6 @@
 import json
+import subprocess
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -8,6 +10,8 @@ from src import train
 from src.artifacts import file_fingerprint, load_model_bundle, save_model_bundle
 from src.config import load_training_config
 from src.preprocessing import preprocess_accepted_loans, save_preprocessed_accepted_loans
+
+SYNTHETIC_CONTEXT = "synthetic_test_fixture"
 
 
 def _training_frame(rows=40):
@@ -51,6 +55,26 @@ def _training_frame(rows=40):
     return pd.DataFrame(data)
 
 
+def _isolate_reports(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setattr(train, "REPORT_DIR", report_dir)
+    monkeypatch.setattr(evaluate_locked, "REPORT_DIR", report_dir)
+    return report_dir
+
+
+def _tracked_report_snapshot():
+    repo = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        ["git", "ls-files", "reports/validation", "reports/test"],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=repo,
+    )
+    paths = [repo / line for line in result.stdout.splitlines() if line]
+    return {str(path.relative_to(repo)): path.read_bytes() for path in paths}
+
+
 def test_sample_training_uses_smoke_artifact_and_report_paths():
     output, report_dir = train._paths(train.DEFAULT_ACCEPTED_BUNDLE, sample=100)
 
@@ -58,17 +82,23 @@ def test_sample_training_uses_smoke_artifact_and_report_paths():
     assert report_dir.parts[-2:] == ("smoke", "validation")
 
 
+def test_artifact_context_defaults_and_explicit_fixture_context():
+    assert train._artifact_data_context(None) == "full_lendingclub_local"
+    assert train._artifact_data_context(100) == "smoke_sample"
+    assert train._artifact_data_context(None, SYNTHETIC_CONTEXT) == SYNTHETIC_CONTEXT
+
+
 def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, monkeypatch, capsys):
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
     _training_frame().to_csv(csv_path, index=False)
-    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+    _isolate_reports(monkeypatch, tmp_path)
 
-    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
     bundle = load_model_bundle(saved)
 
     assert bundle.metadata["model_version"] == "accepted-default-v1"
-    assert bundle.metadata["artifact_data_context"] == "full_lendingclub_local"
+    assert bundle.metadata["artifact_data_context"] == SYNTHETIC_CONTEXT
     assert bundle.metadata["split_manifest"]["row_counts"]["test"] > 0
     assert bundle.metadata["split_date_boundaries"]["validation"]["min"] is not None
     assert bundle.metadata["validation_metrics_summary"]["rows"] == bundle.metadata["split_row_counts"]["validation"]
@@ -101,10 +131,15 @@ def test_training_config_controls_models_and_cv(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+    _isolate_reports(monkeypatch, tmp_path)
 
     loaded = load_training_config(config_path)
-    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, config_path=config_path)
+    saved = train.train_accepted_model(
+        csv_path=csv_path,
+        output_path=bundle_path,
+        config_path=config_path,
+        artifact_data_context=SYNTHETIC_CONTEXT,
+    )
     bundle = load_model_bundle(saved)
 
     assert bundle.metadata["selected_model_name"] == "logistic_balanced"
@@ -157,10 +192,10 @@ def test_full_training_does_not_reuse_smoke_preprocessed_cache(tmp_path, monkeyp
     cache_path = tmp_path / "accepted_preprocessed.joblib"
     _training_frame().to_csv(csv_path, index=False)
     save_preprocessed_accepted_loans(preprocess_accepted_loans(csv_path, sample=10), cache_path)
-    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+    _isolate_reports(monkeypatch, tmp_path)
     monkeypatch.setattr(train, "DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE", cache_path)
 
-    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
     bundle = load_model_bundle(saved)
 
     assert bundle.metadata["split_row_counts"]["train"] == 24
@@ -170,9 +205,14 @@ def test_validation_only_mode_writes_comparison_without_bundle(tmp_path, monkeyp
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
     _training_frame().to_csv(csv_path, index=False)
-    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
+    _isolate_reports(monkeypatch, tmp_path)
 
-    saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, validation_only=True)
+    saved = train.train_accepted_model(
+        csv_path=csv_path,
+        output_path=bundle_path,
+        validation_only=True,
+        artifact_data_context=SYNTHETIC_CONTEXT,
+    )
 
     assert saved == bundle_path
     assert bundle_path.exists()
@@ -183,9 +223,8 @@ def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monk
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
     _training_frame().to_csv(csv_path, index=False)
-    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
-    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
-    monkeypatch.setattr(evaluate_locked, "REPORT_DIR", tmp_path / "reports")
+    _isolate_reports(monkeypatch, tmp_path)
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
 
     output = evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
     summary = json.loads(output.read_text(encoding="utf-8"))
@@ -193,6 +232,7 @@ def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monk
 
     assert output.name == "metrics_summary.json"
     assert summary["rows"] > 0
+    assert summary["artifact_data_context"] == SYNTHETIC_CONTEXT
     assert summary["baseline_comparison"]
     assert bundle.metadata["locked_test_metrics_summary"]["evaluation_split"] == "test"
     assert bundle.metadata["locked_test_baseline_comparison"]
@@ -213,8 +253,8 @@ def test_locked_evaluation_fails_when_test_id_set_differs_with_same_count(tmp_pa
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
     _training_frame().to_csv(csv_path, index=False)
-    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
-    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    _isolate_reports(monkeypatch, tmp_path)
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
     bundle = load_model_bundle(bundle_path)
     count = len(bundle.metadata["split_manifest"]["test_ids"])
     bundle.metadata["split_manifest"]["test_ids"] = [f"wrong-{i}" for i in range(count)]
@@ -228,20 +268,20 @@ def test_locked_evaluation_sample_writes_smoke_reports(tmp_path, monkeypatch):
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
     _training_frame().to_csv(csv_path, index=False)
-    monkeypatch.setattr(train, "REPORT_DIR", tmp_path / "reports")
-    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
-    monkeypatch.setattr(evaluate_locked, "REPORT_DIR", tmp_path / "reports")
+    _isolate_reports(monkeypatch, tmp_path)
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
 
     evaluate_locked.evaluate_locked_model(bundle_path, csv_path, sample=10)
 
     assert (tmp_path / "reports" / "smoke" / "test" / "metrics_summary.json").exists()
 
 
-def test_locked_evaluation_fails_on_source_fingerprint_drift(tmp_path):
+def test_locked_evaluation_fails_on_source_fingerprint_drift(tmp_path, monkeypatch):
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
     _training_frame().to_csv(csv_path, index=False)
-    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path)
+    _isolate_reports(monkeypatch, tmp_path)
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
 
     changed = _training_frame()
     changed.loc[0, "annual_inc"] = 999999
@@ -249,6 +289,23 @@ def test_locked_evaluation_fails_on_source_fingerprint_drift(tmp_path):
 
     with pytest.raises(ValueError, match="source CSV fingerprint does not match"):
         evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
+
+
+def test_fixture_training_and_locked_evaluation_do_not_touch_tracked_reports(tmp_path, monkeypatch):
+    before = _tracked_report_snapshot()
+    assert before
+    csv_path = tmp_path / "accepted.csv"
+    bundle_path = tmp_path / "bundle.joblib"
+    cache_path = tmp_path / "accepted_preprocessed.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    _isolate_reports(monkeypatch, tmp_path)
+    monkeypatch.setattr(train, "DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE", cache_path)
+    monkeypatch.setattr(evaluate_locked, "DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE", cache_path)
+
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
+    evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
+
+    assert _tracked_report_snapshot() == before
 
 
 def test_file_fingerprint_changes_when_same_size_content_changes(tmp_path):

@@ -1,15 +1,15 @@
 {
   "models": [
     {
-      "model_name": "hist_gradient_boosting",
+      "model_name": "random_forest",
       "model_role": "final_model",
       "rows": 134273,
       "observed_default_rate": 0.19885606190373345,
-      "mean_predicted_default_rate": 0.22229555827734876,
-      "roc_auc": 0.7091908070791646,
-      "pr_auc": 0.35785214420780054,
-      "brier_score": 0.14628292401105333,
-      "log_loss": 0.45675680389072576
+      "mean_predicted_default_rate": 0.22567519461108546,
+      "roc_auc": 0.6998043554578668,
+      "pr_auc": 0.3470123415478876,
+      "brier_score": 0.14785747550778056,
+      "log_loss": 0.46129604097957183
     },
     {
       "model_name": "base_rate",
@@ -27,11 +27,11 @@
       "model_role": "baseline",
       "rows": 134273,
       "observed_default_rate": 0.19885606190373345,
-      "mean_predicted_default_rate": 0.19979166554002378,
-      "roc_auc": 0.7067865033318557,
-      "pr_auc": 0.3551323739968548,
-      "brier_score": 0.14620178956296848,
-      "log_loss": 0.4562604215723382
+      "mean_predicted_default_rate": 0.19068241517767612,
+      "roc_auc": 0.7079871192305901,
+      "pr_auc": 0.35674602549464823,
+      "brier_score": 0.1458291409129375,
+      "log_loss": 0.45542918365002377
     },
     {
       "model_name": "grade_historical_rate",
