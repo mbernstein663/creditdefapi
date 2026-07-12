@@ -21,3 +21,5 @@ jobs:
         run: python -m compileall -q api.py batch.py evaluate_locked.py src tests
       - name: Unit tests
         run: python -m pytest
+      - name: Docker build
+        run: docker build -t credit-default-api-ci .

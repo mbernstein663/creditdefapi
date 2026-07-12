@@ -114,7 +114,7 @@
         </div>
         <div class="result" id="result">
           <div class="big">No score yet</div>
-          <div class="small">The API will return calibrated default probability, confidence, and risk band.</div>
+          <div class="small">The API will return calibrated default probability, decision margin, and risk band.</div>
         </div>
       </aside>
     </section>
@@ -231,11 +231,11 @@
         return;
       }
       const pct = (body.p_default * 100).toFixed(1);
-      const confidence = (body.confidence * 100).toFixed(1);
+      const decisionMargin = (body.decision_margin * 100).toFixed(1);
       result.innerHTML = `
         <div class="big">${pct}% default risk</div>
         <div><strong>Risk band:</strong> ${body.risk_band}</div>
-        <div><strong>Confidence:</strong> ${confidence}%</div>
+        <div><strong>Decision margin:</strong> ${decisionMargin}% from 50/50</div>
         <div class="small">${body.scoring_note}</div>
       `;
     });

@@ -80,10 +80,10 @@ expects accepted-loan CSV at `./accepted_2007_to_2018Q4.csv`.
 # this writes the preprocessing artifact at: `artifacts/accepted_preprocessed.joblib`
 python -m src.preprocessing
 
-# Trains the calibrated models and write validation artifacts
-python train.py
+# Trains the calibrated models and writes validation artifacts
+python -m src.train
 
-HOW IS THE BEST MODEL CHOSEN??
+If `training.selected_model` is omitted, candidates are selected automatically by validation mean absolute calibration gap, Brier score, log loss, CV calibration gap, CV Brier score, ROC-AUC, PR-AUC, then configured model order as the final tie-breaker. Set `training.selected_model` to one enabled model to pin it manually.
 ```
 
 This writes:
@@ -105,7 +105,7 @@ The committed validation evidence is meant to be readable, not exhaustive. Any l
 To run the locked test evaluation later, once model selection is finished.
 
 ```bash
-python evaluate_locked.py
+python -m evaluate_locked
 ```
 
 That writes `reports/test/`. Do not treat locked test as part of the regular iteration loop.
@@ -158,7 +158,7 @@ curl -X POST http://localhost:8000/score \
 ```
 
 ```bash
-python batch.py docs/demo/sample_batch_input.csv docs/demo/sample_batch_output.csv --api-url http://127.0.0.1:8000
+python -m batch docs/demo/sample_batch_input.csv docs/demo/sample_batch_output.csv --api-url http://127.0.0.1:8000
 ```
 
 Look in `docs/demo/` for demo API tests.
@@ -197,7 +197,7 @@ The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default thro
 ### Reporting Methodology
 
 - `reports/validation/` is the main path for validation-stage review.
-- `reports/test/` should only be committed after a deliberate locked test run with `evaluate_locked.py`.
+- `reports/test/` should only be committed after a deliberate locked test run with `python -m evaluate_locked`.
 - `reports/smoke/` is for smoke/sample runs.
 
 ## Test Metrics

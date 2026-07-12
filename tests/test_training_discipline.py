@@ -114,6 +114,43 @@ def test_training_config_controls_models_and_cv(tmp_path, monkeypatch):
     assert loaded["calibration_methods"] == ["isotonic"]
 
 
+def test_training_config_defaults_to_automatic_selection_and_all_enabled_models(tmp_path):
+    pinned_config = tmp_path / "pinned.yaml"
+    automatic_config = tmp_path / "automatic.yaml"
+    pinned_config.write_text(
+        "\n".join(
+            [
+                "training:",
+                "  cross_validation: false",
+                "  models:",
+                "    logistic regression: true",
+                "    logistic balanced: true",
+                "  selected_model: logistic balanced",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    automatic_config.write_text(
+        "\n".join(
+            [
+                "training:",
+                "  cross_validation: false",
+                "  models:",
+                "    logistic regression: true",
+                "    logistic balanced: true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    pinned = load_training_config(pinned_config)
+    automatic = load_training_config(automatic_config)
+
+    assert pinned["selected_model"] == "logistic_balanced"
+    assert automatic["selected_model"] is None
+    assert automatic["models"] == ["logistic", "logistic_balanced"]
+
+
 def test_full_training_does_not_reuse_smoke_preprocessed_cache(tmp_path, monkeypatch):
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"

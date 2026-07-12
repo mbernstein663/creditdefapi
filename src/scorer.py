@@ -7,7 +7,10 @@ from .artifacts import ModelBundle
 from .config import ACCEPTED_NUMERIC_RISK_FEATURES, ACCEPTED_RISK_FEATURES
 from .preprocessing import apply_numeric_feature_transforms, ensure_no_forbidden_features, parse_percent
 
-SCORING_NOTE = "Probability is calibrated for accepted/funded LendingClub-style loans with resolved historical outcomes."
+SCORING_NOTE = (
+    "Probability is calibrated for accepted/funded LendingClub-style loans with resolved historical outcomes. "
+    "decision_margin is 2 * abs(p_default - 0.5): scaled distance from a 50/50 default probability, not statistical confidence."
+)
 
 """
 Takes model bundle and establishes scoring layer of pipeline.
@@ -48,7 +51,7 @@ def _prepare_scoring_frame(frame: pd.DataFrame, feature_columns: list[str]) -> p
     return apply_numeric_feature_transforms(prepared)
 
 
-def _confidence(p_default: pd.Series) -> pd.Series:
+def _decision_margin(p_default: pd.Series) -> pd.Series:
     values = pd.to_numeric(p_default, errors="coerce").astype(float)
     return (values.sub(0.5).abs() * 2).clip(0, 1)
 
@@ -70,7 +73,7 @@ def score_frame(frame: pd.DataFrame, bundle: ModelBundle) -> pd.DataFrame:
     scored = prepared.copy()
     scored["p_default"] = p_default
     scored["p_non_default"] = 1 - pd.to_numeric(p_default, errors="coerce")
-    scored["confidence"] = _confidence(p_default)
+    scored["decision_margin"] = _decision_margin(p_default)
     scored["risk_band"] = _risk_band(p_default, metadata.get("risk_band_thresholds"))
     scored["model_version"] = metadata.get("model_version")
     scored["model_type"] = metadata.get("selected_model_type", bundle.model_type)
@@ -85,7 +88,7 @@ def score_records(records, bundle: ModelBundle) -> list[dict]:
     columns = [
         "p_default",
         "p_non_default",
-        "confidence",
+        "decision_margin",
         "risk_band",
         "model_version",
         "model_type",

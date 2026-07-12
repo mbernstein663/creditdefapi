@@ -41,7 +41,9 @@ class AcceptedScoreRequest(BaseModel):
 class ScoreResponse(BaseModel):
     p_default: float
     p_non_default: float
-    confidence: float
+    decision_margin: float = Field(
+        description="2 * abs(p_default - 0.5), a scaled distance from 50/50 default probability; not statistical confidence."
+    )
     risk_band: str
     model_version: Optional[str] = None
     model_type: Optional[str] = None

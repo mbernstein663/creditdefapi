@@ -79,7 +79,7 @@ def test_score_returns_risk_only_schema(monkeypatch):
     assert set(body) == {
         "p_default",
         "p_non_default",
-        "confidence",
+        "decision_margin",
         "risk_band",
         "model_version",
         "model_type",

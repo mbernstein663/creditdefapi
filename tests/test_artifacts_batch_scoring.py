@@ -139,7 +139,7 @@ def test_score_records_return_risk_only_schema():
 
     assert scored["p_default"] == 0.10
     assert scored["p_non_default"] == 0.90
-    assert scored["confidence"] == 0.8
+    assert scored["decision_margin"] == 0.8
     assert scored["risk_band"] == "medium"
     assert "scoring_note" in scored
     assert "decision" not in scored

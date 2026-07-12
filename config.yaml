@@ -1,6 +1,7 @@
 training:
   cross_validation: false
-  selected_model: histogram gradient boosting
+  # Optional: uncomment to pin one enabled model instead of automatic validation selection.
+  # selected_model: histogram gradient boosting
   models:
     logistic regression: true
     logistic balanced: true
