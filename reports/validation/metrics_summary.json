@@ -12,7 +12,7 @@
   "model_type": "calibrated_random_forest",
   "calibration_method": "isotonic",
   "target_name": "default",
-  "training_timestamp": "2026-07-12T04:46:23.382687+00:00",
+  "training_timestamp": "2026-07-12T20:58:20.955294+00:00",
   "artifact_data_context": "full_lendingclub_local",
   "artifact_label": "Full LendingClub local data",
   "artifact_note": "Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.",

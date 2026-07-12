@@ -4,7 +4,7 @@
 - Evidence label: `Full LendingClub local data`
 - Evidence note: Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.
 - Evaluation split: `validation`
-- Training timestamp: `2026-07-12T04:46:23.382687+00:00`
+- Training timestamp: `2026-07-12T20:58:20.955294+00:00`
 - Sample rows requested: `None`
 
 ## Purpose
