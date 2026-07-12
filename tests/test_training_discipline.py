@@ -110,6 +110,19 @@ def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, 
     assert "saved best model:" in out
 
 
+def test_custom_training_source_does_not_overwrite_shared_preprocessing_cache(tmp_path, monkeypatch):
+    csv_path = tmp_path / "accepted.csv"
+    bundle_path = tmp_path / "bundle.joblib"
+    cache_path = tmp_path / "shared-cache.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    _isolate_reports(monkeypatch, tmp_path)
+    monkeypatch.setattr(train, "DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE", cache_path)
+
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
+
+    assert not cache_path.exists()
+
+
 def test_training_config_controls_models_and_cv(tmp_path, monkeypatch):
     csv_path = tmp_path / "accepted.csv"
     config_path = tmp_path / "config.yaml"
@@ -261,6 +274,21 @@ def test_locked_evaluation_fails_when_test_id_set_differs_with_same_count(tmp_pa
     save_model_bundle(bundle, bundle_path)
 
     with pytest.raises(ValueError, match="test split IDs do not match"):
+        evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
+
+
+def test_locked_evaluation_fails_when_validation_report_is_stale(tmp_path, monkeypatch):
+    csv_path = tmp_path / "accepted.csv"
+    bundle_path = tmp_path / "bundle.joblib"
+    _training_frame().to_csv(csv_path, index=False)
+    report_dir = _isolate_reports(monkeypatch, tmp_path)
+    train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
+    metrics_path = report_dir / "validation" / "metrics_summary.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    metrics["selected_model"] = "stale_model"
+    metrics_path.write_text(json.dumps(metrics), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="validation report does not match locked bundle"):
         evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from src.artifacts import file_fingerprint, load_model_bundle, save_model_bundle
 from src.config import ACCEPTED_CSV, DEFAULT_ACCEPTED_BUNDLE, DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE, REPORT_DIR
@@ -10,8 +11,26 @@ from src.models import predict_raw_default
 from src.preprocessing import load_preprocessed_accepted_loans, preprocess_accepted_loans, save_preprocessed_accepted_loans
 
 
+def _verify_validation_report(bundle, report_dir: Path) -> None:
+    path = report_dir / "validation" / "metrics_summary.json"
+    try:
+        metrics = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(f"validation report is missing: {path}") from exc
+    metadata = bundle.metadata or {}
+    expected = {
+        "selected_model": metadata.get("selected_model_name"),
+        "training_timestamp": metadata.get("training_timestamp"),
+    }
+    for field, value in expected.items():
+        if metrics.get(field) != value:
+            raise ValueError(f"validation report does not match locked bundle: {field}")
+
+
 def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED_CSV, sample=None):
     bundle = load_model_bundle(bundle_path)
+    validation_root = REPORT_DIR / "smoke" if bundle.metadata.get("sample_rows_requested") else REPORT_DIR
+    _verify_validation_report(bundle, validation_root)
     expected_source = bundle.metadata.get("source_fingerprint")
     actual_source = file_fingerprint(csv_path)
     if expected_source and (

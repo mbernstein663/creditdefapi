@@ -21,5 +21,28 @@ jobs:
         run: python -m compileall -q api.py batch.py evaluate_locked.py src tests
       - name: Unit tests
         run: python -m pytest
-      - name: Docker build
-        run: docker build -t credit-default-api-ci .
+      - name: Build production and demo images
+        run: |
+          docker build --target production -t credit-default-api:production .
+          docker build --target demo -t credit-default-api:demo .
+      - name: Smoke test demo image
+        run: |
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then docker logs credit-default-api-demo; fi
+            docker rm -f credit-default-api-demo >/dev/null 2>&1 || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+          docker run -d --name credit-default-api-demo -p 8000:8000 credit-default-api:demo
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:8000/ready && break
+            if [ "$attempt" -eq 30 ]; then exit 1; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8000/health
+          curl --fail --silent http://127.0.0.1:8000/ready
+          curl --fail --silent http://127.0.0.1:8000/model-card
+          curl --fail --silent --header 'Content-Type: application/json' \
+            --data '{"loan_amnt":1000,"int_rate":10,"annual_inc":50000,"dti":12,"fico_range_low":700}' \
+            http://127.0.0.1:8000/score-frontend

@@ -63,6 +63,8 @@ def _artifact_data_context(sample: int | None, artifact_data_context: str | None
 
 
 def _load_or_build_preprocessed(csv_path, sample, selected_features):
+    if Path(csv_path).resolve() != ACCEPTED_CSV.resolve():
+        return preprocess_accepted_loans(csv_path, sample=sample, selected_features=selected_features)
     try:
         cached = load_preprocessed_accepted_loans(DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE)
         if cached.source_fingerprint == file_fingerprint(csv_path) and getattr(cached, "sample_rows_requested", None) == sample:

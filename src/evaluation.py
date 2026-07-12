@@ -117,10 +117,6 @@ def _fmt(value) -> str:
     return f"{value:.4f}" if isinstance(value, float) else str(value)
 
 
-def _csv(values) -> str:
-    return ", ".join(values or []) or "not recorded"
-
-
 def _metric_row(model_name: str, y_true, p_default, model_role: str) -> dict:
     y = pd.Series(y_true).reset_index(drop=True)
     p = pd.Series(p_default).reset_index(drop=True)
@@ -136,12 +132,6 @@ def _metric_row(model_name: str, y_true, p_default, model_role: str) -> dict:
         "brier_score": summary["brier_score"],
         "log_loss": summary["log_loss"],
     }
-
-
-def _json_block(value) -> list[str]:
-    if not value:
-        return ["`not recorded`"]
-    return ["```json", json.dumps(value, indent=2, default=str), "```"]
 
 
 def _markdown_table(rows: list[dict], columns: list[tuple[str, str]]) -> list[str]:
@@ -188,105 +178,13 @@ def _split_rows(metadata: dict) -> list[str]:
     return [f"- {name.title()}: `{counts.get(name, 'n/a')}`" for name in order if name in counts]
 
 
-def _split_table(metadata: dict) -> list[str]:
-    rows = metadata.get("split_summary") or []
-    return _markdown_table(
-        rows,
-        [
-            ("split", "Split"),
-            ("rows", "Rows"),
-            ("default_rate", "Default Rate"),
-            ("date_min", "Date Min"),
-            ("date_max", "Date Max"),
-        ],
-    )
-
-
 def _baseline_table_rows(metrics: dict) -> list[dict]:
     return metrics.get("baseline_comparison") or []
 
 
-def _limitations(metadata: dict) -> list[str]:
-    required = [
-        "accepted-loan selection bias",
-        "rejected applications are unlabeled and excluded from supervised default modeling",
-        "unresolved outcomes excluded",
-        "not production underwriting",
-        "no fair-lending validation",
-    ]
-    return list(dict.fromkeys((metadata.get("limitations") or []) + required))
-
-
-def _evidence_note(stage: str) -> str:
-    if stage == "test":
-        return (
-            "Validation was used for model, hyperparameter, calibration, and display selection. "
-            "This locked test report was generated after selection and is the final committed model evidence."
-        )
-    return "Validation reports are model-selection evidence, not final held-out performance claims."
-
-
-def _test_model_card(bundle, metrics: dict) -> str:
-    metadata = bundle.metadata or {}
-    artifact_label, artifact_note = _artifact_status(metadata)
-    metric_lines = [
-        f"- Rows: `{metrics['rows']}`",
-        f"- Observed default rate: `{_fmt(metrics['observed_default_rate'])}`",
-        f"- Mean predicted default rate: `{_fmt(metrics['mean_predicted_default_rate'])}`",
-        f"- ROC-AUC: `{_fmt(metrics['roc_auc'])}`",
-        f"- PR-AUC: `{_fmt(metrics['pr_auc'])}`",
-        f"- Brier score: `{_fmt(metrics['brier_score'])}`",
-        f"- Log loss: `{_fmt(metrics['log_loss'])}`",
-    ]
-    return "\n".join([
-        "# Model Card",
-        "",
-        "## Artifact Status",
-        f"- Evidence label: `{artifact_label}`",
-        f"- Evidence note: {artifact_note}",
-        f"- Evaluation split: `test`",
-        "",
-        f"Training timestamp: `{metadata.get('training_timestamp', 'n/a')}`",
-        "",
-        "## Dataset Splits",
-        "",
-        *_split_rows(metadata),
-        "",
-        "## Model",
-        "",
-        f"- Selected model: `{metrics.get('selected_model')}`",
-        f"- Calibration method: `{metrics.get('calibration_method')}`",
-        f"- Feature count: `{len(getattr(bundle, 'feature_columns', []) or [])}`",
-        "",
-        "## Test Metrics",
-        "",
-        *metric_lines,
-        "",
-        "## Baseline Comparison",
-        "",
-        *_markdown_table(
-            _baseline_table_rows(metrics),
-            [
-                ("model_name", "Model"),
-                ("model_role", "Role"),
-                ("roc_auc", "ROC-AUC"),
-                ("pr_auc", "PR-AUC"),
-                ("brier_score", "Brier"),
-                ("log_loss", "Log Loss"),
-                ("mean_predicted_default_rate", "Mean PD"),
-            ],
-        ),
-    ])
-
-
 def _model_card(bundle, stage: str, metrics: dict) -> str:
-    if stage == "test":
-        return _test_model_card(bundle, metrics)
-
     metadata = bundle.metadata or {}
-    limits = _limitations(metadata)
     artifact_label, artifact_note = _artifact_status(metadata)
-    sample_rows = metadata.get("sample_rows_requested")
     metric_lines = [
         f"- Rows: `{metrics['rows']}`",
         f"- Observed default rate: `{_fmt(metrics['observed_default_rate'])}`",
@@ -296,7 +194,7 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
         f"- Brier score: `{_fmt(metrics['brier_score'])}`",
         f"- Log loss: `{_fmt(metrics['log_loss'])}`",
     ]
-    return "\n".join([
+    lines = [
         "# Model Card",
         "",
         "## Artifact Status",
@@ -304,59 +202,40 @@ def _model_card(bundle, stage: str, metrics: dict) -> str:
         f"- Evidence note: {artifact_note}",
         f"- Evaluation split: `{stage}`",
         f"- Training timestamp: `{metadata.get('training_timestamp', 'n/a')}`",
-        f"- Sample rows requested: `{sample_rows}`",
-        "",
-        "## Purpose",
-        "Calibrated default-risk prediction for accepted LendingClub loans with resolved outcomes.",
-        "",
-        "## Scope",
-        "Evaluated on accepted/funded loans only. Not a production underwriting system or rejected-applicant outcome model.",
-        "",
-        "## Target",
-        f"- Target: `{metadata.get('target_name', TARGET)}`",
-        f"- Good statuses: `{_csv(metadata.get('good_statuses'))}`",
-        f"- Bad statuses: `{_csv(metadata.get('bad_statuses'))}`",
-        f"- Dropped statuses: `{_csv(metadata.get('dropped_statuses'))}`",
         "",
         "## Dataset Splits",
+        "",
         *_split_rows(metadata),
         "",
-        "## Chronological Split Details",
-        *_split_table(metadata),
-        "",
         "## Model",
-        f"- Model type: `{metadata.get('selected_model_type', bundle.model_type)}`",
+        "",
         f"- Selected model: `{metrics.get('selected_model')}`",
         f"- Calibration method: `{metrics.get('calibration_method')}`",
         f"- Feature count: `{len(getattr(bundle, 'feature_columns', []) or [])}`",
         "",
-        "## Evidence Use",
-        _evidence_note(stage),
-        "",
         f"## {stage.title()} Metrics",
+        "",
         *metric_lines,
-        "",
-        "## Baseline Comparison",
-        *_markdown_table(
-            _baseline_table_rows(metrics),
-            [
-                ("model_name", "Model"),
-                ("model_role", "Role"),
-                ("roc_auc", "ROC-AUC"),
-                ("pr_auc", "PR-AUC"),
-                ("brier_score", "Brier"),
-                ("log_loss", "Log Loss"),
-                ("mean_predicted_default_rate", "Mean PD"),
-            ],
-        ),
-        "",
-        "## Split Strategy",
-        *_json_block(metadata.get("split_summary")),
-        "",
-        "## Known Limits",
-        *(f"- {limit}" for limit in limits),
-        "",
-    ])
+    ]
+    if _baseline_table_rows(metrics):
+        lines += [
+            "",
+            "## Baseline Comparison",
+            "",
+            *_markdown_table(
+                _baseline_table_rows(metrics),
+                [
+                    ("model_name", "Model"),
+                    ("model_role", "Role"),
+                    ("roc_auc", "ROC-AUC"),
+                    ("pr_auc", "PR-AUC"),
+                    ("brier_score", "Brier"),
+                    ("log_loss", "Log Loss"),
+                    ("mean_predicted_default_rate", "Mean PD"),
+                ],
+            ),
+        ]
+    return "\n".join(lines) + "\n"
 
 
 def generate_evaluation_reports(

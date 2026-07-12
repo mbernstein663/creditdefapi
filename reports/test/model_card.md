@@ -4,8 +4,7 @@
 - Evidence label: `Full LendingClub local data`
 - Evidence note: Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.
 - Evaluation split: `test`
-
-Training timestamp: `2026-07-12T20:58:20.955294+00:00`
+- Training timestamp: `2026-07-12T22:03:49.460174+00:00`
 
 ## Dataset Splits
 
@@ -16,7 +15,7 @@ Training timestamp: `2026-07-12T20:58:20.955294+00:00`
 
 ## Model
 
-- Selected model: `random_forest`
+- Selected model: `hist_gradient_boosting`
 - Calibration method: `isotonic`
 - Feature count: `25`
 
@@ -24,17 +23,17 @@ Training timestamp: `2026-07-12T20:58:20.955294+00:00`
 
 - Rows: `134273`
 - Observed default rate: `0.1989`
-- Mean predicted default rate: `0.2257`
-- ROC-AUC: `0.6998`
-- PR-AUC: `0.3470`
-- Brier score: `0.1479`
-- Log loss: `0.4613`
+- Mean predicted default rate: `0.2223`
+- ROC-AUC: `0.7092`
+- PR-AUC: `0.3579`
+- Brier score: `0.1463`
+- Log loss: `0.4568`
 
 ## Baseline Comparison
 
 | Model | Role | ROC-AUC | PR-AUC | Brier | Log Loss | Mean PD |
 | --- | --- | --- | --- | --- | --- | --- |
-| random_forest | final_model | 0.6998 | 0.3470 | 0.1479 | 0.4613 | 0.2257 |
+| hist_gradient_boosting | final_model | 0.7092 | 0.3579 | 0.1463 | 0.4568 | 0.2223 |
 | base_rate | baseline | 0.5000 | 0.1989 | 0.1595 | 0.4995 | 0.1846 |
 | logistic_regression | baseline | 0.7080 | 0.3567 | 0.1458 | 0.4554 | 0.1907 |
 | grade_historical_rate | baseline | 0.6759 | 0.3044 | 0.1492 | 0.4660 | 0.1893 |

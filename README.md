@@ -186,25 +186,33 @@ The reduced frontend endpoint uses a separate saved bundle trained on the top fi
 
 ## Docker
 
-Build:
+Build and run the production image with host-trained artifacts mounted read-only:
 
 ```bash
-docker build -t credit-default-api .
+docker build --target production -t credit-default-api .
 ```
 
 Run:
 
 ```bash
-docker run --rm -p 8000:8000 -v "${PWD}/artifacts:/app/artifacts" credit-default-api
+docker run --rm -p 8000:8000 -v "${PWD}/artifacts:/app/artifacts:ro" credit-default-api
 ```
 
 On Windows PowerShell, this mount form is usually clearer:
 
 ```powershell
-docker run --rm -p 8000:8000 -v "${PWD}\artifacts:/app/artifacts" credit-default-api
+docker run --rm -p 8000:8000 -v "${PWD}\artifacts:/app/artifacts:ro" credit-default-api
 ```
 
-The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default through `.dockerignore`. Train on the host first, then mount `./artifacts`; otherwise container `/ready` will fail because the saved bundles are absent.
+The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default through `.dockerignore`. Train on the host first, then mount `./artifacts`; otherwise container `/ready` will fail because the saved bundles are absent. The production container never generates or substitutes a model.
+
+For CI or a local API demo, build the separate synthetic-fixture target:
+
+```bash
+docker compose --profile demo up --build demo
+```
+
+Its bundles are marked `synthetic_test_fixture` and are only for exercising inference paths, never model evidence. Use `docker compose --profile production up --build production` for the production service.
 
 ## Reporting Methodology
 

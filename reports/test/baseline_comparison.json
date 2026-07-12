@@ -1,15 +1,15 @@
 {
   "models": [
     {
-      "model_name": "random_forest",
+      "model_name": "hist_gradient_boosting",
       "model_role": "final_model",
       "rows": 134273,
       "observed_default_rate": 0.19885606190373345,
-      "mean_predicted_default_rate": 0.22567519461108548,
-      "roc_auc": 0.6998043554578668,
-      "pr_auc": 0.3470123415478876,
-      "brier_score": 0.14785747550778053,
-      "log_loss": 0.4612960409795718
+      "mean_predicted_default_rate": 0.22229555827734876,
+      "roc_auc": 0.7091908070791646,
+      "pr_auc": 0.35785214420780054,
+      "brier_score": 0.14628292401105333,
+      "log_loss": 0.45675680389072576
     },
     {
       "model_name": "base_rate",

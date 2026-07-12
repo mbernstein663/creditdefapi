@@ -79,8 +79,10 @@ def test_generate_evaluation_reports_creates_required_outputs(tmp_path):
 
     model_card = outputs["model_card"].read_text(encoding="utf-8")
     assert "Synthetic/test fixture" in model_card
-    assert "## Split Strategy\n```json" in model_card
-    assert '"split": "train"' in model_card
+    assert "## Validation Metrics\n\n- Rows:" in model_card
+    assert "## Purpose" not in model_card
+    assert "## Scope" not in model_card
+    assert "## Split Strategy" not in model_card
 
 
 def test_baseline_comparison_uses_train_calibration_only():
