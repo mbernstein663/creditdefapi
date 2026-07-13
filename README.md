@@ -1,20 +1,55 @@
 # Credit Default Risk API
 
-This repo is a calibrated, API-backed LendingClub default-risk project. It uses previously accepted/funded loans with resolved outcomes to estimate probability of default with leakage-controlled modeling, chronological validation, saved artifacts, API-backed scoring, batch scoring, Dockerized serving, and tests.
+This repo is a LendingClub loan risk-grading ML project. It uses historical accepted and funded loans with resolved outcomes to identify additional predictive signal beyond LendingClub’s existing risk grades and produce default-risk estimates.
 
-## Overview
+I want to reiterate that this repo is not production underwriting; this is a historical calibrated default-risk modeling and deployment project that uses loans with resolved outcomes only. It includes leakage-controlled modeling, chronological validation, class calibration, model artifact preservation, FastAPI-backed scoring operations (with batch scoring), and adequate testing. There is optional Docker containerization as well.
 
-This repo is not production underwriting or a rejected-applicant model.
+In a real business scenario, a loan underwriter may be able use these results to devise more profitable lending policies.
 
-## Scope
+## Results:
 
-- Supervised modeling uses accepted/funded loans with resolved outcomes only.
+We ran four different models with cross validation and isotonic/sigmoid calibration tuning:
+
+- Histogram gradient boosted trees
+- Random forest
+- Logistic regression
+- Class-weighted logistic regression
+
+**Selected Model:** HGB with isotonic calibration was selected during validation and is now pinned as the final configuration.
+
+Resulting test metrics from local run:
+
+- Rows: `134273`
+- Observed default rate: `0.1989`
+- Mean predicted default rate: `0.2223`
+- ROC-AUC: `0.7092`
+- PR-AUC: `0.3579`
+- Brier score: `0.1463`
+- Log loss: `0.4568`
+
+### Baseline comparison
+
+LendingClub uses grade (coarse) and sub-grade (detailed) risk classification to rank loans historically. We also used a constant $p_{\text{default}} = \frac{\text{training defaults}}{\text{training loans}}$ as a base rate comparison:
+
+| Model | ROC-AUC | PR-AUC | Brier | Log Loss |
+| --- | ---: | ---: | ---: | ---: |
+| Final calibrated hist gradient boosting | 0.7092 | 0.3579 | 0.1463 | 0.4568 |
+| Base rate | 0.5000 | 0.1989 | 0.1595 | 0.4995 |
+| Grade historical rate (A-G)| 0.6759 | 0.3044 | 0.1492 | 0.4660 |
+| Sub-grade historical rate (A1-G5)| 0.6853 | 0.3248 | 0.1487 | 0.4639 |
+
+**Verdict:** Our selected model learns useful information beyond grade alone.
+
+## Data & Target Definition
+
+We wanted to ensure a fair grading without cutting too many of our samples. We started with 2,260,701 previously accepted loans from June 2007 to December 2018 with 35 consumer attributes.
+
 - The target is binary `default`.
-- Outputs are calibrated `p_default`, `p_non_default`, `decision_margin`, and `risk_band`.
+- Outputs are calibrated `p_default`
 - Features are limited to application-time or underwriting-time fields.
 - Post-origination repayment fields are forbidden model inputs.
 
-## Target Definition
+After preprocessing, we ended up using 25 attributes and 1,348,099 loans with known outcomes. We purposely did not use non-accepted loans because their realized success rate is unknown and we cannot optimize default rates that way.
 
 **Default** (Bad Outcomes):
 
@@ -36,24 +71,30 @@ Dropped from supervised modeling:
 - `Issued`
 - other blank or unresolved statuses
 
-## Data Setup
+### Dataset Setup
 
-Raw LendingClub files are intentionally not committed.
+Raw LendingClub files are not committed. 
 
 Default expected path at repo root:
 
-- `./accepted_2007_to_2018Q4.csv`
+`./accepted_2007_to_2018Q4.csv`
 
-The active default-risk pipeline requires the accepted-loan file only. Raw LendingClub CSVs are intentionally not committed. Obtain the dataset from a public LendingClub archive or mirror, then place the accepted-loan file at the exact filename above, or pass a custom path with `--csv`.
+The active default-risk pipeline requires the accepted-loan file only. Obtain the dataset from a public LendingClub archive or mirror, then place the accepted-loan file at the exact filename above, or pass a custom path with `--csv`.
 
-## Local Venv Run
+**KaggleHub download:**
 
-Default paths:
+```
+import kagglehub
 
-- Accepted data: `./accepted_2007_to_2018Q4.csv`
-- Preprocessed cache: `./artifacts/accepted_preprocessed.joblib`
-- Main bundle: `./artifacts/accepted_model.joblib`
-- Frontend bundle: `./artifacts/frontend_model.joblib`
+# Download latest version
+path = kagglehub.dataset_download("wordsforthewise/lending-club")
+
+print("Path to dataset files:", path)
+```
+
+Link: https://www.kaggle.com/datasets/wordsforthewise/lending-club
+
+## Run Using Venv:
 
 Requires `python` on local path and the accepted-loan CSV at the repo root.
 
@@ -68,6 +109,8 @@ python -m pip install -e .[dev]
 
 python -m src.preprocessing
 python -m src.train
+
+# expects accepted-loan CSV at `./accepted_2007_to_2018Q4.csv`.
 ```
 
 This writes:
@@ -76,58 +119,59 @@ This writes:
 - `artifacts/frontend_model.joblib`
 - validation reports under `reports/validation/`
 
-Review validation results for model selection:
+### Configuration:
 
-- `reports/validation/metrics_summary.json`
-- `reports/validation/model_card.md`
-- `reports/validation/model_validation_results.csv`
-- `reports/validation/risk_decile_lift.csv`
-- ROC/PR/reliability plots
+Use `config.yaml` to enable/disable cross validation, model types, or calibration types.
 
-Validation compares all enabled candidate runs unless `training.selected_model` is set. The committed config leaves `selected_model` unset, so the best validation candidate is selected automatically. To manually pin a model, uncomment `selected_model` in `config.yaml` and set it to one enabled model.
+If `training.selected_model` is omitted, candidates are selected automatically by validation mean absolute calibration gap, Brier score, log loss, CV calibration gap, CV Brier score, ROC-AUC, PR-AUC, then configured model order as the final tie-breaker. Set `training.selected_model` to one enabled model to pin it manually.
 
-Automatic selection ranks candidates by validation mean absolute calibration gap, Brier score, log loss, CV calibration gap, CV Brier score, ROC-AUC, PR-AUC, then configured model order as the final tie-breaker. Validation is not the final held-out performance claim.
-
-Deliberately run the locked test evaluation after model selection is finished:
+To run the locked test evaluation later, once model selection is finished:
 
 ```bash
 python -m evaluate_locked
 ```
 
-That writes the final committed model evidence under `reports/test/`. Do not treat locked test as part of the regular iteration loop.
+That writes `reports/test/`. Do not treat locked test as part of the regular iteration loop.
 
-Expected locked-test report files include:
+## API + Frontend Viewing
 
-- `reports/test/model_card.md`
-- `reports/test/metrics_summary.json`
-- `reports/test/baseline_comparison.csv`
-- `reports/test/baseline_comparison.json`
-- `reports/test/calibration_deciles.csv`
-- `reports/test/risk_decile_lift.csv`
-- `reports/test/roc_curve.csv`
-- `reports/test/pr_curve.csv`
-- `reports/test/reliability_plot.png`
-- `reports/test/roc_curve.png`
-- `reports/test/pr_curve.png`
-
-Start the API:
+Ensuring your `venv` is still activated, start the API:
 
 ```bash
 uvicorn api:app --reload
 ```
 
-Check liveness and readiness:
+Once the API server is started, open a new terminal to perform scoring/health checks
 
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/ready
+### Frontend
+
+The frontend is a demo of an application that would help with quick underwriting decisions. Fill in five loan application attributes, it gets graded, then returns a default risk score. The endpoint uses a separate saved bundle trained on the top five application-time features from the main validation feature-importance pass. 
+
+`/frontend/index.html` is a static-file server. To run the frontend, start the API then use the GET request to configurate the HTML.
+
+```
+curl http://127.0.0.1:8000/frontend-config
 ```
 
-`/health` only checks that the service is up. `/ready` checks that both saved bundles exist and contain the required metadata. It will return `503` before training has produced artifacts, or when Docker is running without mounted artifacts.
+Next, open http://127.0.0.1:8000/ in your browser:
 
-Score a single row or batch file:
+```
+http://127.0.0.1:8000/
+```
+
+
+### API Health Checks + Samples
 
 ```bash
+#Check liveness and readiness
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+
+"""
+`/health` only checks that the service is up. `/ready` checks that both saved bundles exist and contain the required metadata. It will return `503` before training has produced artifacts, or when Docker is running without mounted artifacts.
+"""
+
+# Score a sample loan
 curl -X POST http://localhost:8000/score \
   -H "Content-Type: application/json" \
   -d '{
@@ -159,20 +203,13 @@ curl -X POST http://localhost:8000/score \
   }'
 ```
 
+Batch scoring sample:
+
 ```bash
 python -m batch docs/demo/sample_batch_input.csv docs/demo/sample_batch_output.csv --api-url http://127.0.0.1:8000
 ```
 
-Smoke/sample runs are for quick checks only and are not final model evidence:
-
-```bash
-python -m src.preprocessing --sample 5000
-python -m src.train --sample 5000
-```
-
-## API
-
-Endpoints:
+### API Endpoints
 
 - `GET /health`
 - `GET /ready`
@@ -182,86 +219,42 @@ Endpoints:
 - `POST /score-frontend`
 - `POST /score-batch`
 
-The reduced frontend endpoint uses a separate saved bundle trained on the top five application-time features from the main validation feature-importance pass. It is still a default-risk model, not a separate business-decision system.
-
 ## Docker
 
-Build and run the production image with host-trained artifacts mounted read-only:
+This repo has optional Docker support if you're against using a venv. To build & run:
 
 ```bash
-docker build --target production -t credit-default-api .
+docker build -t credit-default-api .
+
+docker run --rm -p 8000:8000 -v ./artifacts:/app/artifacts credit-default-api
 ```
 
-Run:
+The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default through `.dockerignore`. That means container `/ready` will fail unless you either:
 
-```bash
-docker run --rm -p 8000:8000 -v "${PWD}/artifacts:/app/artifacts:ro" credit-default-api
-```
+1. train on the host first and mount `./artifacts`, or
+2. mount an existing `artifacts/` directory produced elsewhere.
 
-On Windows PowerShell, this mount form is usually clearer:
+## Methodology
 
-```powershell
-docker run --rm -p 8000:8000 -v "${PWD}\artifacts:/app/artifacts:ro" credit-default-api
-```
+- `reports/validation/` is the main path for validation-stage review.
+- `reports/test/` should only be committed after a deliberate locked test run with `python -m evaluate_locked`.
+- `reports/smoke/` is for smoke/sample runs.
 
-The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default through `.dockerignore`. Train on the host first, then mount `./artifacts`; otherwise container `/ready` will fail because the saved bundles are absent. The production container never generates or substitutes a model.
+### Split Details
 
-For CI or a local API demo, build the separate synthetic-fixture target:
+**Time Based Split:** four way chronological: 60-15-15-10
 
-```bash
-docker compose --profile demo up --build demo
-```
+| Split | Rows | Default Rate | Date Min | Date Max |
+| --- | --- | --- | --- | --- |
+| train | 829355 | 0.1846 | 2007-06-01T00:00:00 | 2015-12-01T00:00:00 |
+| calibration | 196607 | 0.2265 | 2016-01-01T00:00:00 | 2016-07-01T00:00:00 |
+| validation | 187864 | 0.2399 | 2016-08-01T00:00:00 | 2017-06-01T00:00:00 |
+| test | 134273 | 0.1989 | 2017-07-01T00:00:00 | 2018-12-01T00:00:00 |
 
-Its bundles are marked `synthetic_test_fixture` and are only for exercising inference paths, never model evidence. Use `docker compose --profile production up --build production` for the production service.
+### Demo Files
 
-## Reporting Methodology
 
-- `reports/test/model_card.md` is the main final evidence after the locked test run.
-- `reports/validation/` is secondary evidence used to compare configured candidates and confirm/tune the selected model/calibration choice.
-- `reports/test/` should only be regenerated by deliberately running `python -m evaluate_locked` after selection is complete.
-- `reports/smoke/` is for smoke/sample runs and is not model evidence.
-- `metrics_summary.json` and `model_card.md` label each report as one of:
-  - full LendingClub local data
-  - smoke-test sample
-  - synthetic/test fixture
-
-## Final Evidence
-
-The final model evidence is produced by:
-
-```bash
-python -m evaluate_locked
-```
-
-The locked test report compares the selected calibrated model against simple baselines fit only on train/calibration rows: base-rate, logistic regression when feasible, and historical grade/sub_grade rates when those fields are available.
-
-## Finalized Test Set Performance
-
-Locked test performance from `reports/test/metrics_summary.json`:
-
-| Metric | Value |
-| --- | ---: |
-| Rows | 134,273 |
-| Observed default rate | 0.1989 |
-| Mean predicted default rate | 0.2257 |
-| ROC-AUC | 0.6998 |
-| PR-AUC | 0.3470 |
-| Brier score | 0.1479 |
-| Log loss | 0.4613 |
-
-Baseline comparison:
-
-| Model | ROC-AUC | PR-AUC | Brier | Log Loss |
-| --- | ---: | ---: | ---: | ---: |
-| Final calibrated random forest | 0.6998 | 0.3470 | 0.1479 | 0.4613 |
-| Base rate | 0.5000 | 0.1989 | 0.1595 | 0.4995 |
-| Logistic regression | 0.7080 | 0.3567 | 0.1458 | 0.4554 |
-| Grade historical rate | 0.6759 | 0.3044 | 0.1492 | 0.4660 |
-| Sub-grade historical rate | 0.6853 | 0.3248 | 0.1487 | 0.4639 |
-
-Raw data and model binaries remain uncommitted.
-
-## Demo Files
+Look in `docs/demo/` for demo API tests.
 
 Committed demo files:
 
@@ -269,9 +262,7 @@ Committed demo files:
 - `docs/demo/sample_batch_output.csv`
 - `docs/demo/README.md`
 
-These files demonstrate API/batch mechanics only. They are not evidence for model performance.
-
-## Tests
+### Tests
 
 Run:
 
@@ -283,7 +274,8 @@ The suite covers target construction, leakage prevention, split discipline, cali
 
 ## Limitations
 
-- Accepted-loan selection bias remains because the supervised population is accepted/funded loans only.
+- Test set may not be representative of current 2026 lending practices
 - Rejected applications are excluded because repayment outcomes are not observed.
-- The repo demonstrates disciplined modeling and artifact-backed serving, not production deployment controls.
-- Fair-lending validation, monitoring, drift management, and operational controls are out of scope.
+- No production deployment controls.
+- Fair-lending validation, monitoring, and operational controls are not in scope.
+- No profit/policy optimization is included, just default predictions.
