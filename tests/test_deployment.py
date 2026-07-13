@@ -17,6 +17,15 @@ def test_demo_generator_writes_valid_synthetic_bundles(monkeypatch, tmp_path):
         assert bundle.required_input_schema
         assert bundle.metadata["artifact_data_context"] == "synthetic_test_fixture"
 
+    frontend_bundle = load_model_bundle(paths[1])
+    assert frontend_bundle.metadata["frontend_defaults"] == {
+        "loan_amnt": 12000.0,
+        "int_rate": 13.5,
+        "annual_inc": 65000.0,
+        "dti": 18.4,
+        "fico_range_low": 685.0,
+    }
+
     monkeypatch.setattr(api, "DEFAULT_ACCEPTED_BUNDLE", paths[0])
     monkeypatch.setattr(api, "DEFAULT_FRONTEND_BUNDLE", paths[1])
     assert TestClient(api.app).get("/ready").status_code == 200

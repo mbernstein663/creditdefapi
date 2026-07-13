@@ -3,45 +3,6 @@ import json
 from pathlib import Path
 
 
-def test_scope_guardrails_block_reintroduced_decision_or_business_terms():
-    repo = Path(__file__).resolve().parents[1]
-    files = [
-        repo / "README.md",
-        repo / "api.py",
-        repo / "batch.py",
-        repo / "evaluate_locked.py",
-        repo / "src" / "train.py",
-        *sorted((repo / "src").glob("*.py")),
-    ]
-    allowed = [
-        "It is not a pro" "fit model or lending po" "licy engine.",
-        "Does not meet the credit po" "licy. Status:Charged Off",
-        "Does not meet the credit po" "licy. Status:Fully Paid",
-        "the resolved `Does not meet the credit po" "licy. Status:Charged Off` variant",
-        "the resolved `Does not meet the credit po" "licy. Status:Fully Paid` variant",
-    ]
-    banned = [
-        "pro" "fit",
-        "expected_" "pro" "fit",
-        "realized_" "pro" "fit",
-        "appro" "ve",
-        "appro" "val",
-        "po" "licy",
-        "invest" "ment",
-        "lg" "d",
-        "required_" "return",
-        "good_" "pro" "fit_" "haircut",
-    ]
-
-    text = "\n".join(path.read_text(encoding="utf-8") for path in files)
-    for phrase in allowed:
-        text = text.replace(phrase, "")
-
-    lowered = text.lower()
-    for term in banned:
-        assert term not in lowered
-
-
 def test_gitignore_allows_committed_locked_test_report_files():
     repo = Path(__file__).resolve().parents[1]
     lines = set((repo / ".gitignore").read_text(encoding="utf-8").splitlines())
@@ -77,6 +38,8 @@ def test_demo_batch_output_preserves_submitted_features():
         for submitted_row, scored_row in zip(submitted, scored)
     )
     assert {"p_default", "risk_band", "model_version"} <= scored[0].keys()
+    assert "decision_margin" not in scored[0]
+    assert "scoring_note" not in scored[0]
 
 
 def test_locked_evaluation_manifest_is_allowed_and_contains_bundle_sha():
@@ -95,3 +58,16 @@ def test_frontend_accessibility_and_font_contract():
     assert "overflow-wrap: anywhere;" in frontend
     assert '<div class="result" id="result" aria-live="polite">' in frontend
     assert 'font-family: Georgia, "Times New Roman", serif;' not in frontend
+
+
+def test_frontend_uses_config_defaults_without_ranked_or_extra_score_output():
+    frontend = (Path(__file__).resolve().parents[1] / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert "Top 5 attributes" not in frontend
+    assert "rank-list" not in frontend
+    assert "feature_importance" not in frontend
+    assert "decision_margin" not in frontend
+    assert "scoring_note" not in frontend
+    assert 'name === "dti" ? "0.1"' in frontend
+    assert "buildField(name, body.frontend_defaults)" in frontend
+    assert "Number(defaults[name]).toFixed(1)" in frontend

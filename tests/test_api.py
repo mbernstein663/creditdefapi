@@ -56,7 +56,7 @@ def test_model_card_returns_metadata(monkeypatch):
     assert "locked_test_baseline_comparison" in body
 
 
-def test_frontend_config_returns_top_fields(monkeypatch):
+def test_frontend_config_returns_fields_and_defaults(monkeypatch):
     monkeypatch.setattr(
         api,
         "frontend_bundle",
@@ -69,6 +69,9 @@ def test_frontend_config_returns_top_fields(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert len(body["frontend_fields"]) == 5
+    assert body["frontend_defaults"]["dti"] == 18.4
+    assert "feature_importance" not in body
+    assert "scoring_note" not in body
 
 
 def test_score_returns_risk_only_schema(monkeypatch):
@@ -84,12 +87,10 @@ def test_score_returns_risk_only_schema(monkeypatch):
     assert set(body) == {
         "p_default",
         "p_non_default",
-        "decision_margin",
         "risk_band",
         "model_version",
         "model_type",
         "calibration_method",
-        "scoring_note",
     }
 
 

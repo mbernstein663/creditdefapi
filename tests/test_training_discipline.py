@@ -2,6 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -91,6 +92,21 @@ def test_artifact_context_defaults_and_explicit_fixture_context():
     assert train._artifact_data_context(None, SYNTHETIC_CONTEXT) == SYNTHETIC_CONTEXT
 
 
+def test_frontend_defaults_restore_log_transformed_training_medians():
+    frame = pd.DataFrame(
+        {
+            "loan_amnt": np.log1p([1000, 3000, 9000]),
+            "dti": [10.0, 20.0, 30.0],
+            "grade": ["A", "B", "C"],
+        }
+    )
+
+    assert train._frontend_defaults(frame, ["loan_amnt", "dti", "grade"]) == {
+        "loan_amnt": pytest.approx(3000.0),
+        "dti": 20.0,
+    }
+
+
 def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, monkeypatch, capsys):
     csv_path = tmp_path / "accepted.csv"
     bundle_path = tmp_path / "bundle.joblib"
@@ -99,6 +115,8 @@ def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, 
 
     saved = train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
     bundle = load_model_bundle(saved)
+    frontend_bundle = load_model_bundle(tmp_path / "frontend_model.joblib")
+    train_df = preprocess_accepted_loans(csv_path).splits["train"]
 
     assert bundle.metadata["model_version"] == "accepted-default-v1"
     assert bundle.metadata["artifact_data_context"] == SYNTHETIC_CONTEXT
@@ -106,6 +124,9 @@ def test_train_pipeline_saves_split_provenance_and_validation_reports(tmp_path, 
     assert bundle.metadata["split_date_boundaries"]["validation"]["min"] is not None
     assert bundle.metadata["validation_metrics_summary"]["rows"] == bundle.metadata["split_row_counts"]["validation"]
     assert bundle.metadata["cross_validation_summary"]["selected_model_name"] == bundle.metadata["selected_model_name"]
+    assert frontend_bundle.metadata["frontend_defaults"] == train._frontend_defaults(
+        train_df, frontend_bundle.feature_columns
+    )
     assert (tmp_path / "reports" / "validation" / "metrics_summary.json").exists()
     assert (tmp_path / "reports" / "validation" / "model_validation_results.csv").exists()
     out = capsys.readouterr().out

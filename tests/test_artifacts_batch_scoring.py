@@ -47,6 +47,13 @@ def accepted_bundle(metadata=None, feature_columns=None):
             "forbidden_feature_columns": ["loan_status"],
             "artifact_data_context": "synthetic_test_fixture",
             "frontend_fields": ["loan_amnt", "int_rate", "annual_inc", "dti", "fico_range_low"],
+            "frontend_defaults": {
+                "loan_amnt": 12000.0,
+                "int_rate": 13.5,
+                "annual_inc": 65000.0,
+                "dti": 18.4,
+                "fico_range_low": 685.0,
+            },
             "feature_importance": [
                 {"feature": "loan_amnt", "importance": 0.03},
                 {"feature": "int_rate", "importance": 0.02},
@@ -145,9 +152,9 @@ def test_score_records_return_risk_only_schema():
 
     assert scored["p_default"] == 0.10
     assert scored["p_non_default"] == 0.90
-    assert scored["decision_margin"] == 0.8
     assert scored["risk_band"] == "medium"
-    assert "scoring_note" in scored
+    assert "decision_margin" not in scored
+    assert "scoring_note" not in scored
     assert "decision" not in scored
 
 

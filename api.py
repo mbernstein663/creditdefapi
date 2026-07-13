@@ -125,8 +125,7 @@ def frontend_config():
         "model_type": metadata.get("selected_model_type", bundle.model_type),
         "calibration_method": metadata.get("calibration_method"),
         "frontend_fields": bundle.feature_columns,
-        "feature_importance": metadata.get("feature_importance", []),
-        "scoring_note": "Frontend demo uses a separate reduced-feature model trained on exactly the displayed fields.",
+        "frontend_defaults": metadata.get("frontend_defaults", {}),
     }
 
 

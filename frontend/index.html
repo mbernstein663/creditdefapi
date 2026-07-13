@@ -73,7 +73,6 @@
     }
     button:hover { background: var(--accent-dark); }
     .sidebar { padding: 22px; display: grid; gap: 18px; }
-    .rank-list { margin: 0; padding-left: 18px; color: var(--muted); }
     .result {
       padding: 18px;
       border-left: 4px solid var(--accent);
@@ -92,11 +91,10 @@
 <body>
   <main>
     <section class="hero">
-      <h1>Calibrated Default Risk Demo</h1>
-      <p class="lede">This page uses a separate reduced-feature model trained on exactly the five strongest ranked application-time attributes from the main accepted-loan default model.</p>
+      <h1>Default Risk Evaluation</h1>
+      <p class="lede">This page uses a reduced five-input model trained on application-time attributes from the main accepted-loan default model.</p>
       <div class="meta">
         <span class="pill" id="model-pill">Loading model metadata...</span>
-        <span class="pill">Demo only: not an underwriting decision</span>
       </div>
     </section>
 
@@ -109,13 +107,9 @@
       </div>
 
       <aside class="panel sidebar">
-        <div>
-          <strong>Top 5 attributes</strong>
-          <ol class="rank-list" id="rank-list"></ol>
-        </div>
         <div class="result" id="result" aria-live="polite">
           <div class="big">No score yet</div>
-          <div class="small">The API will return calibrated default probability, decision margin, and risk band.</div>
+          <div class="small">The API will return calibrated default probability and risk band.</div>
         </div>
       </aside>
     </section>
@@ -165,14 +159,17 @@
       "delinq_2yrs", "inq_last_6mths", "open_acc", "pub_rec", "revol_bal", "revol_util",
       "total_acc", "mort_acc", "acc_open_past_24mths", "pub_rec_bankruptcies"
     ]);
+    const integerFields = new Set([
+      "fico_range_low", "fico_range_high", "delinq_2yrs", "inq_last_6mths", "open_acc",
+      "pub_rec", "total_acc", "mort_acc", "acc_open_past_24mths", "pub_rec_bankruptcies"
+    ]);
 
     const form = document.querySelector("#score-form");
     const fields = document.querySelector("#fields");
     const result = document.querySelector("#result");
-    const rankList = document.querySelector("#rank-list");
     const modelPill = document.querySelector("#model-pill");
 
-    function buildField(name) {
+    function buildField(name, defaults) {
       const label = document.createElement("label");
       label.textContent = labelMap[name] || name;
       let input;
@@ -187,8 +184,11 @@
       } else {
         input = document.createElement("input");
         input.type = numericFields.has(name) ? "number" : "text";
-        input.step = numericFields.has(name) ? "any" : "";
-        input.min = numericFields.has(name) ? "0" : "";
+        if (numericFields.has(name)) {
+          input.step = name === "dti" ? "0.1" : integerFields.has(name) ? "1" : "any";
+          input.min = "0";
+          if (defaults[name] != null) input.value = name === "dti" ? Number(defaults[name]).toFixed(1) : defaults[name];
+        }
       }
       input.name = name;
       input.required = true;
@@ -205,14 +205,7 @@
         return;
       }
       modelPill.textContent = `${body.model_type} · ${body.calibration_method} · ${body.model_version}`;
-      fields.replaceChildren(...body.frontend_fields.map(buildField));
-      rankList.replaceChildren(
-        ...body.feature_importance.slice(0, 5).map((row) => {
-          const item = document.createElement("li");
-          item.textContent = `${labelMap[row.feature] || row.feature} (${row.importance.toFixed(4)})`;
-          return item;
-        })
-      );
+      fields.replaceChildren(...body.frontend_fields.map((name) => buildField(name, body.frontend_defaults)));
     }
 
     form.addEventListener("submit", async (event) => {
@@ -232,12 +225,9 @@
         return;
       }
       const pct = (body.p_default * 100).toFixed(1);
-      const decisionMargin = (body.decision_margin * 100).toFixed(1);
       result.innerHTML = `
         <div class="big">${pct}% default risk</div>
         <div><strong>Risk band:</strong> ${body.risk_band}</div>
-        <div><strong>Decision margin:</strong> ${decisionMargin}% from 50/50</div>
-        <div class="small">${body.scoring_note}</div>
       `;
     });
 

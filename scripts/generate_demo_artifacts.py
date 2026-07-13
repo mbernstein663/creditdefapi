@@ -11,9 +11,16 @@ from src.calibration import ProbabilityCalibrator
 from src.config import ACCEPTED_RISK_FEATURES, FORBIDDEN_FEATURE_COLUMNS
 
 FRONTEND_FEATURES = ["loan_amnt", "int_rate", "annual_inc", "dti", "fico_range_low"]
+FRONTEND_DEFAULTS = {
+    "loan_amnt": 12000.0,
+    "int_rate": 13.5,
+    "annual_inc": 65000.0,
+    "dti": 18.4,
+    "fico_range_low": 685.0,
+}
 
 
-def _bundle(feature_columns: list[str], model_version: str) -> ModelBundle:
+def _bundle(feature_columns: list[str], model_version: str, frontend_defaults: dict | None = None) -> ModelBundle:
     frame = pd.DataFrame([[0] * len(feature_columns), [1] * len(feature_columns)], columns=feature_columns)
     model = DummyClassifier(strategy="prior").fit(frame, [0, 1])
     metadata = {
@@ -32,6 +39,7 @@ def _bundle(feature_columns: list[str], model_version: str) -> ModelBundle:
         "artifact_data_context": "synthetic_test_fixture",
         "limitations": ["CI/demo inference only; never use as real model evidence"],
         "risk_band_thresholds": {"low_max": 0.1, "medium_max": 0.2},
+        "frontend_defaults": frontend_defaults or {},
     }
     return ModelBundle(
         model=model,
@@ -50,7 +58,8 @@ def generate(output_dir: str | Path) -> tuple[Path, Path]:
             _bundle(list(ACCEPTED_RISK_FEATURES), "synthetic-ci-accepted-v1"), output / "accepted_model.joblib"
         ),
         save_model_bundle(
-            _bundle(FRONTEND_FEATURES, "synthetic-ci-frontend-v1"), output / "frontend_model.joblib"
+            _bundle(FRONTEND_FEATURES, "synthetic-ci-frontend-v1", FRONTEND_DEFAULTS),
+            output / "frontend_model.joblib",
         ),
     )
 

@@ -13,6 +13,7 @@ from src.artifacts import ModelBundle, file_fingerprint, package_versions, save_
 from src.calibration import ProbabilityCalibrator, calibration_summary
 from src.config import (
     ACCEPTED_CSV,
+    ACCEPTED_NUMERIC_RISK_FEATURES,
     ARTIFACT_DIR,
     DEFAULT_ACCEPTED_BUNDLE,
     DEFAULT_CALIBRATION_METHODS,
@@ -23,6 +24,7 @@ from src.config import (
     FRONTEND_TOP_FEATURE_COUNT,
     MODEL_VERSION,
     REPORT_DIR,
+    RISK_NUMERIC_LOG_TRANSFORMS,
     TARGET,
     load_training_config,
 )
@@ -136,6 +138,16 @@ def _permutation_feature_importance(model, calibrator, frame: pd.DataFrame, sele
             }
         )
     return sorted(rows, key=lambda row: abs(row["importance"]), reverse=True)
+
+
+def _frontend_defaults(train_df: pd.DataFrame, frontend_fields: list[str]) -> dict[str, float]:
+    defaults = {}
+    for field in frontend_fields:
+        if field not in ACCEPTED_NUMERIC_RISK_FEATURES:
+            continue
+        median = float(pd.to_numeric(train_df[field], errors="coerce").median())
+        defaults[field] = float(np.expm1(median)) if field in RISK_NUMERIC_LOG_TRANSFORMS else median
+    return defaults
 
 
 def _cross_validation_summary(train_df: pd.DataFrame, selected_features: list[str], model_name: str) -> dict:
@@ -279,6 +291,7 @@ def _build_bundle(
     git_commit,
     training_timestamp,
     frontend_fields: list[str] | None = None,
+    frontend_defaults: dict[str, float] | None = None,
     feature_importance: list[dict] | None = None,
     cross_validation_summary: dict | None = None,
     model_version: str = MODEL_VERSION,
@@ -331,6 +344,7 @@ def _build_bundle(
             "forbidden_feature_columns": forbidden_columns,
             "feature_importance": feature_importance or [],
             "frontend_fields": frontend_fields or [],
+            "frontend_defaults": frontend_defaults or {},
             "limitations": [
                 "accepted-loan selection bias",
                 "rejected applications are unlabeled and excluded from supervised default modeling",
@@ -399,6 +413,7 @@ def train_accepted_model(
     }
     feature_importance = []
     frontend_fields = []
+    frontend_defaults = {}
     if selected is not None and not validation_only:
         cross_validation_summary["candidate_summaries"] = [
             {
@@ -415,6 +430,7 @@ def train_accepted_model(
             selected_features,
         )
         frontend_fields = [row["feature"] for row in feature_importance[:FRONTEND_TOP_FEATURE_COUNT]]
+        frontend_defaults = _frontend_defaults(train_df, frontend_fields)
 
         frontend_selected, frontend_candidates = select_candidate(
             train_df,
@@ -452,6 +468,7 @@ def train_accepted_model(
             git_commit,
             training_timestamp,
             frontend_fields=frontend_fields,
+            frontend_defaults=frontend_defaults,
             feature_importance=feature_importance,
             cross_validation_summary=frontend_cross_validation_summary,
             model_version=f"{MODEL_VERSION}-frontend",
