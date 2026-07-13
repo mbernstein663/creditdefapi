@@ -1,8 +1,13 @@
+from io import StringIO
+
+import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 import api
 from src.artifacts import save_model_bundle
-from tests.test_artifacts_batch_scoring import accepted_bundle, accepted_row
+from src.scorer import predict_default
+from tests.test_artifacts_batch_scoring import InputSensitiveModel, accepted_bundle, accepted_row
 
 
 def test_health_works():
@@ -150,3 +155,24 @@ def test_score_batch_returns_csv(monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     assert "p_default" in response.text
+
+
+def test_api_and_batch_raw_predictions_match_direct_bundle_prediction(monkeypatch):
+    bundle = accepted_bundle(feature_columns=["loan_amnt", "int_rate", "open_acc"])
+    bundle.model = InputSensitiveModel()
+    monkeypatch.setattr(api, "accepted_bundle", lambda: bundle)
+    raw = {"loan_amnt": 1000, "int_rate": "10%", "open_acc": 8}
+    expected = predict_default(bundle, pd.DataFrame([raw])).iloc[0]
+    client = TestClient(api.app)
+
+    api_payload = accepted_row()
+    api_payload.pop("id")
+    assert client.post("/score", json=api_payload).json()["p_default"] == pytest.approx(expected)
+
+    response = client.post(
+        "/score-batch",
+        files={"file": ("loans.csv", b"loan_amnt,int_rate,open_acc\n1000,10%,8\n", "text/csv")},
+    )
+    row = pd.read_csv(StringIO(response.text)).iloc[0]
+    assert row["p_default"] == pytest.approx(expected)
+    assert row[["loan_amnt", "int_rate", "open_acc"]].to_dict() == raw

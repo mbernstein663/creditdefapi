@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from src.artifacts import file_fingerprint, load_model_bundle, save_model_bundle
+from src.artifacts import file_fingerprint, load_model_bundle
 from src.config import ACCEPTED_CSV, DEFAULT_ACCEPTED_BUNDLE, DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE, REPORT_DIR
 from src.evaluation import baseline_comparison_metrics, generate_evaluation_reports
 from src.models import predict_raw_default
@@ -28,6 +28,7 @@ def _verify_validation_report(bundle, report_dir: Path) -> None:
 
 
 def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED_CSV, sample=None):
+    bundle_fingerprint = file_fingerprint(bundle_path)
     bundle = load_model_bundle(bundle_path)
     validation_root = REPORT_DIR / "smoke" if bundle.metadata.get("sample_rows_requested") else REPORT_DIR
     _verify_validation_report(bundle, validation_root)
@@ -69,9 +70,14 @@ def evaluate_locked_model(bundle_path=DEFAULT_ACCEPTED_BUNDLE, csv_path=ACCEPTED
     baselines = baseline_comparison_metrics(bundle, preprocessing.splits, p_default)
     report_dir = REPORT_DIR / "smoke" / "test" if sample else REPORT_DIR / "test"
     outputs = generate_evaluation_reports(bundle, test_df, p_default, report_dir, "test", baseline_comparison=baselines)
-    bundle.metadata["locked_test_metrics_summary"] = json.loads(outputs["metrics_summary"].read_text(encoding="utf-8"))
-    bundle.metadata["locked_test_baseline_comparison"] = baselines
-    save_model_bundle(bundle, bundle_path)
+    manifest = {
+        "model_bundle_sha256": bundle_fingerprint["sha256"],
+        "model_version": bundle.metadata.get("model_version"),
+        "selected_model": bundle.metadata.get("selected_model_name"),
+        "locked_test_metrics": json.loads(outputs["metrics_summary"].read_text(encoding="utf-8")),
+        "baseline_comparison": baselines,
+    }
+    (report_dir / "evaluation_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return outputs["metrics_summary"]
 
 

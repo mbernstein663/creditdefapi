@@ -5,7 +5,7 @@ import pytest
 from batch import score_csv
 from src.artifacts import ModelBundle, load_model_bundle, save_model_bundle
 from src.config import ACCEPTED_RISK_FEATURES
-from src.scorer import score_records
+from src.scorer import predict_default, score_frame, score_records
 
 
 class DummyModel:
@@ -17,6 +17,12 @@ class DummyModel:
 class IdentityCalibrator:
     def predict(self, raw):
         return raw
+
+
+class InputSensitiveModel:
+    def predict_proba(self, frame):
+        p = np.clip(frame["loan_amnt"].to_numpy(dtype=float) / 100, 0, 1)
+        return np.column_stack([1 - p, p])
 
 
 def accepted_bundle(metadata=None, feature_columns=None):
@@ -155,3 +161,26 @@ def test_frontend_subset_bundle_can_score():
 def test_missing_fields_fail_clearly():
     with pytest.raises(ValueError, match="missing required scoring fields"):
         score_records([{"loan_amnt": 1000}], accepted_bundle())
+
+
+def test_score_frame_transforms_once_and_preserves_raw_batch_values(monkeypatch):
+    bundle = accepted_bundle(feature_columns=["loan_amnt", "int_rate", "open_acc"])
+    bundle.model = InputSensitiveModel()
+    frame = pd.DataFrame([{"loan_amnt": 1000, "int_rate": "10%", "open_acc": 8}])
+    expected = predict_default(bundle, frame)
+
+    from src import scorer
+
+    original = scorer._prepare_scoring_frame
+    calls = []
+
+    def counted_prepare(raw, columns):
+        calls.append(1)
+        return original(raw, columns)
+
+    monkeypatch.setattr(scorer, "_prepare_scoring_frame", counted_prepare)
+    scored = score_frame(frame, bundle)
+
+    assert calls == [1]
+    assert scored.loc[0, "p_default"] == pytest.approx(expected.iloc[0])
+    assert scored.loc[0, ["loan_amnt", "int_rate", "open_acc"]].to_dict() == frame.iloc[0].to_dict()

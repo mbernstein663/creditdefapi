@@ -57,8 +57,11 @@ def _training_frame(rows=40):
 
 def _isolate_reports(monkeypatch, tmp_path):
     report_dir = tmp_path / "reports"
+    cache_path = tmp_path / "accepted_preprocessed.joblib"
     monkeypatch.setattr(train, "REPORT_DIR", report_dir)
     monkeypatch.setattr(evaluate_locked, "REPORT_DIR", report_dir)
+    monkeypatch.setattr(train, "DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE", cache_path)
+    monkeypatch.setattr(evaluate_locked, "DEFAULT_PREPROCESSED_ACCEPTED_BUNDLE", cache_path)
     return report_dir
 
 
@@ -238,17 +241,20 @@ def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monk
     _training_frame().to_csv(csv_path, index=False)
     _isolate_reports(monkeypatch, tmp_path)
     train.train_accepted_model(csv_path=csv_path, output_path=bundle_path, artifact_data_context=SYNTHETIC_CONTEXT)
+    bundle_sha256 = file_fingerprint(bundle_path)["sha256"]
 
     output = evaluate_locked.evaluate_locked_model(bundle_path, csv_path)
     summary = json.loads(output.read_text(encoding="utf-8"))
-    bundle = load_model_bundle(bundle_path)
+    manifest = json.loads((tmp_path / "reports" / "test" / "evaluation_manifest.json").read_text(encoding="utf-8"))
 
     assert output.name == "metrics_summary.json"
     assert summary["rows"] > 0
     assert summary["artifact_data_context"] == SYNTHETIC_CONTEXT
     assert summary["baseline_comparison"]
-    assert bundle.metadata["locked_test_metrics_summary"]["evaluation_split"] == "test"
-    assert bundle.metadata["locked_test_baseline_comparison"]
+    assert file_fingerprint(bundle_path)["sha256"] == bundle_sha256
+    assert manifest["model_bundle_sha256"] == bundle_sha256
+    assert manifest["locked_test_metrics"]["evaluation_split"] == "test"
+    assert manifest["baseline_comparison"]
     for filename in [
         "metrics_summary.json",
         "model_card.md",
@@ -258,6 +264,7 @@ def test_locked_evaluation_uses_saved_test_ids_and_writes_metrics(tmp_path, monk
         "risk_decile_lift.csv",
         "roc_curve.csv",
         "pr_curve.csv",
+        "evaluation_manifest.json",
     ]:
         assert (tmp_path / "reports" / "test" / filename).exists()
 

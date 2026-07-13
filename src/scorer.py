@@ -67,10 +67,9 @@ def predict_default(bundle: ModelBundle, frame: pd.DataFrame) -> pd.Series:
 
 
 def score_frame(frame: pd.DataFrame, bundle: ModelBundle) -> pd.DataFrame:
-    prepared = _prepare_scoring_frame(frame, bundle.feature_columns)
-    p_default = predict_default(bundle, prepared)
+    p_default = predict_default(bundle, frame)
     metadata = bundle.metadata or {}
-    scored = prepared.copy()
+    scored = frame.copy()
     scored["p_default"] = p_default
     scored["p_non_default"] = 1 - pd.to_numeric(p_default, errors="coerce")
     scored["decision_margin"] = _decision_margin(p_default)
