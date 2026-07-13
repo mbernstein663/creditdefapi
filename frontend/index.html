@@ -77,9 +77,10 @@
       padding: 18px;
       border-left: 4px solid var(--accent);
       background: rgba(196,79,45,0.08);
-      display: grid;
-      gap: 6px;
-      min-height: 130px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      min-height: 0;
     }
     .big { font-size: 2rem; font-weight: 700; }
     .small { color: var(--muted); }
@@ -160,8 +161,9 @@
       "total_acc", "mort_acc", "acc_open_past_24mths", "pub_rec_bankruptcies"
     ]);
     const integerFields = new Set([
-      "fico_range_low", "fico_range_high", "delinq_2yrs", "inq_last_6mths", "open_acc",
-      "pub_rec", "total_acc", "mort_acc", "acc_open_past_24mths", "pub_rec_bankruptcies"
+      "loan_amnt", "annual_inc", "fico_range_low", "fico_range_high", "delinq_2yrs",
+      "inq_last_6mths", "open_acc", "pub_rec", "total_acc", "mort_acc",
+      "acc_open_past_24mths", "pub_rec_bankruptcies"
     ]);
 
     const form = document.querySelector("#score-form");
@@ -187,7 +189,11 @@
         if (numericFields.has(name)) {
           input.step = name === "dti" ? "0.1" : integerFields.has(name) ? "1" : "any";
           input.min = "0";
-          if (defaults[name] != null) input.value = name === "dti" ? Number(defaults[name]).toFixed(1) : defaults[name];
+          if (defaults[name] != null) {
+            input.value = name === "dti"
+              ? Number(defaults[name]).toFixed(1)
+              : integerFields.has(name) ? Math.round(defaults[name]) : defaults[name];
+          }
         }
       }
       input.name = name;
