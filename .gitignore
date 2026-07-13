@@ -41,6 +41,7 @@ reports/test/*
 !reports/test/reliability_plot.png
 !reports/test/roc_curve.png
 !reports/test/pr_curve.png
+!reports/test/evaluation_manifest.json
 server.err.log
 server.out.log
 data/

@@ -13,7 +13,7 @@
       --line: #d8cdbd;
       --accent: #c44f2d;
       --accent-dark: #8d361c;
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: Arial, Helvetica, sans-serif;
     }
     * { box-sizing: border-box; }
     body {
@@ -43,6 +43,7 @@
       background: rgba(255,255,255,0.72);
       padding: 6px 10px;
       font-size: 0.9rem;
+      overflow-wrap: anywhere;
     }
     .layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr); gap: 20px; }
     .panel {
@@ -112,7 +113,7 @@
           <strong>Top 5 attributes</strong>
           <ol class="rank-list" id="rank-list"></ol>
         </div>
-        <div class="result" id="result">
+        <div class="result" id="result" aria-live="polite">
           <div class="big">No score yet</div>
           <div class="small">The API will return calibrated default probability, decision margin, and risk band.</div>
         </div>
