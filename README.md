@@ -4,7 +4,7 @@ This repo is a LendingClub loan risk-grading ML project. It uses historical acce
 
 I want to reiterate that this repo is not production underwriting; this is a historical calibrated default-risk modeling and deployment project that uses loans with resolved outcomes only. It includes leakage-controlled modeling, chronological validation, class calibration, model artifact preservation, FastAPI-backed scoring operations (with batch scoring), and adequate testing. There is optional Docker containerization as well.
 
-In a real business scenario, a loan underwriter may be able use these results to devise more profitable lending policies.
+In a real business setting, these calibrated risk estimates could support underwriter review.
 
 ## Results:
 
@@ -147,13 +147,7 @@ Once the API server is started, open a new terminal to perform scoring/health ch
 
 The frontend is a demo of an application that would help with quick underwriting decisions. Fill in five loan application attributes, it gets graded, then returns a default risk score. The endpoint uses a separate saved bundle trained on the top five application-time features from the main validation feature-importance pass. 
 
-`/frontend/index.html` is a static-file server. To run the frontend, start the API then use the GET request to configurate the HTML.
-
-```
-curl http://127.0.0.1:8000/frontend-config
-```
-
-Next, open http://127.0.0.1:8000/ in your browser:
+`/frontend/index.html` is a static-file server. To run the frontend, start the API then open http://127.0.0.1:8000/ in your browser:
 
 ```
 http://127.0.0.1:8000/
@@ -278,4 +272,4 @@ The suite covers target construction, leakage prevention, split discipline, cali
 - Rejected applications are excluded because repayment outcomes are not observed.
 - No production deployment controls.
 - Fair-lending validation, monitoring, and operational controls are not in scope.
-- No profit/policy optimization is included, just default predictions.
+- No policy optimization is included, just default predictions.
