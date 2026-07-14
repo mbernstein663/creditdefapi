@@ -1,8 +1,8 @@
 # Credit Default Risk API
 
-This repo is a LendingClub loan risk-grading ML project. It uses historical accepted and funded loans with resolved outcomes to identify additional predictive signal beyond LendingClub’s existing risk grades and produce default-risk estimates.
+This repo is a LendingClub loan risk-grading ML project. It uses historical accepted and funded loans with resolved outcomes to identify additional predictive signal beyond LendingClub’s existing risk classification by producing stronger default-risk estimates.
 
-I want to reiterate that this repo is not production underwriting; this is a historical calibrated default-risk modeling and deployment project that uses loans with resolved outcomes only. It includes leakage-controlled modeling, chronological validation, class calibration, model artifact preservation, FastAPI-backed scoring operations (with batch scoring), and adequate testing. There is optional Docker containerization as well.
+This repo is not a production underwriting system. It is a default-risk modeling and deployment project that uses loans with resolved outcomes only. It includes leakage-controlled modeling, chronological validation, class calibration, model artifact preservation, FastAPI-backed scoring operations (with batch scoring), and adequate testing. There is optional Docker containerization as well.
 
 In a real business setting, these calibrated risk estimates could support underwriter review.
 
@@ -15,7 +15,7 @@ We ran four different models with cross validation and isotonic/sigmoid calibrat
 - Logistic regression
 - Class-weighted logistic regression
 
-**Selected Model:** HGB with isotonic calibration was selected during validation and is now pinned as the final configuration.
+**Selected Model:** HGB with isotonic calibration was selected during validation. It is now pinned as the final configuration in `config.yaml`.
 
 Resulting test metrics from local run:
 
@@ -38,7 +38,7 @@ LendingClub uses grade (coarse) and sub-grade (detailed) risk classification to 
 | Grade historical rate (A-G)| 0.6759 | 0.3044 | 0.1492 | 0.4660 |
 | Sub-grade historical rate (A1-G5)| 0.6853 | 0.3248 | 0.1487 | 0.4639 |
 
-**Verdict:** Our selected model learns useful information beyond grade alone.
+**Verdict:** Our selected model learns useful information beyond LendingClub's current grading system.
 
 ## Data & Target Definition
 
@@ -161,9 +161,9 @@ http://127.0.0.1:8000/
 curl http://localhost:8000/health
 curl http://localhost:8000/ready
 
-"""
-`/health` only checks that the service is up. `/ready` checks that both saved bundles exist and contain the required metadata. It will return `503` before training has produced artifacts, or when Docker is running without mounted artifacts.
-"""
+
+# `/health` only checks that the service is up. `/ready` checks that both saved bundles exist and contain the required metadata. It will return `503` before training has produced artifacts, or when Docker is running without mounted artifacts.
+
 
 # Score a sample loan
 curl -X POST http://localhost:8000/score \
@@ -215,7 +215,7 @@ python -m batch docs/demo/sample_batch_input.csv docs/demo/sample_batch_output.c
 
 ## Docker
 
-This repo has optional Docker support if you're against using a venv. To build & run:
+This repo has optional Docker support if you prefer that over a venv. To build & run:
 
 ```bash
 docker build -t credit-default-api .
