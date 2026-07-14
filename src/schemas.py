@@ -4,25 +4,11 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-class ProfitInputs(BaseModel):
-    funded_amnt: Optional[float] = Field(default=None, gt=0)
-    term_months: Optional[int] = Field(default=None, gt=0)
-    installment: Optional[float] = Field(default=None, gt=0)
-
-
-class RejectedRiskRequest(ProfitInputs):
-    model_config = ConfigDict(extra="forbid")
-
-    amount_requested: float = Field(gt=0)
-    risk_score: float = Field(ge=300, le=900)
-    dti: float = Field(ge=0)
-    zip_code: str = Field(min_length=3)
-    state: str = Field(min_length=2, max_length=2)
-    employment_length: str
-
-
-class AcceptedScoreRequest(ProfitInputs):
+"""
+- defines which schema classes are optional and what makes valid input for proper API response.
+- also defines what fields the API returns from scorer.py
+"""
+class AcceptedScoreRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     loan_amnt: float = Field(gt=0)
@@ -54,11 +40,8 @@ class AcceptedScoreRequest(ProfitInputs):
 
 class ScoreResponse(BaseModel):
     p_default: float
-    decision: str
-    reason: str
-    expected_profit: Optional[float] = None
-    expected_return: Optional[float] = None
-    lgd: Optional[float] = None
-    required_return: Optional[float] = None
-    approval_rule: Optional[str] = None
-    model_note: Optional[str] = None
+    p_non_default: float
+    risk_band: str
+    model_version: Optional[str] = None
+    model_type: Optional[str] = None
+    calibration_method: Optional[str] = None

@@ -1,0 +1,118 @@
+{
+  "stage": "test",
+  "evaluation_split": "test",
+  "rows": 134273,
+  "observed_default_rate": 0.19885606190373345,
+  "mean_predicted_default_rate": 0.22229555827734876,
+  "roc_auc": 0.7091908070791646,
+  "pr_auc": 0.35785214420780054,
+  "brier_score": 0.14628292401105333,
+  "log_loss": 0.45675680389072576,
+  "selected_model": "hist_gradient_boosting",
+  "model_type": "calibrated_hist_gradient_boosting",
+  "calibration_method": "isotonic",
+  "target_name": "default",
+  "training_timestamp": "2026-07-13T01:06:54.665260+00:00",
+  "artifact_data_context": "full_lendingclub_local",
+  "artifact_label": "Full LendingClub local data",
+  "artifact_note": "Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.",
+  "sample_rows_requested": null,
+  "split_row_counts": {
+    "train": 829355,
+    "calibration": 196607,
+    "validation": 187864,
+    "test": 134273
+  },
+  "split_summary": [
+    {
+      "split": "train",
+      "rows": 829355,
+      "default_rate": 0.18455908507213437,
+      "date_min": "2007-06-01T00:00:00",
+      "date_max": "2015-12-01T00:00:00"
+    },
+    {
+      "split": "calibration",
+      "rows": 196607,
+      "default_rate": 0.22647718545117926,
+      "date_min": "2016-01-01T00:00:00",
+      "date_max": "2016-07-01T00:00:00"
+    },
+    {
+      "split": "validation",
+      "rows": 187864,
+      "default_rate": 0.2398916237278031,
+      "date_min": "2016-08-01T00:00:00",
+      "date_max": "2017-06-01T00:00:00"
+    },
+    {
+      "split": "test",
+      "rows": 134273,
+      "default_rate": 0.19885606190373345,
+      "date_min": "2017-07-01T00:00:00",
+      "date_max": "2018-12-01T00:00:00"
+    }
+  ],
+  "limitations": [
+    "accepted-loan selection bias",
+    "rejected applications are unlabeled and excluded from supervised default modeling",
+    "not validated for production underwriting or fair-lending use"
+  ],
+  "baseline_comparison": [
+    {
+      "model_name": "hist_gradient_boosting",
+      "model_role": "final_model",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.22229555827734876,
+      "roc_auc": 0.7091908070791646,
+      "pr_auc": 0.35785214420780054,
+      "brier_score": 0.14628292401105333,
+      "log_loss": 0.45675680389072576
+    },
+    {
+      "model_name": "base_rate",
+      "model_role": "baseline",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.18455908507213437,
+      "roc_auc": 0.5,
+      "pr_auc": 0.19885606190373345,
+      "brier_score": 0.15951673209439532,
+      "log_loss": 0.4994785575120603
+    },
+    {
+      "model_name": "logistic_regression",
+      "model_role": "baseline",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.19068241517767612,
+      "roc_auc": 0.7079871192305901,
+      "pr_auc": 0.35674602549464823,
+      "brier_score": 0.1458291409129375,
+      "log_loss": 0.45542918365002377
+    },
+    {
+      "model_name": "grade_historical_rate",
+      "model_role": "baseline",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.18934145875253414,
+      "roc_auc": 0.6758657439122372,
+      "pr_auc": 0.30442701925943594,
+      "brier_score": 0.14920770090307853,
+      "log_loss": 0.46595526587480673
+    },
+    {
+      "model_name": "sub_grade_historical_rate",
+      "model_role": "baseline",
+      "rows": 134273,
+      "observed_default_rate": 0.19885606190373345,
+      "mean_predicted_default_rate": 0.19082668434691244,
+      "roc_auc": 0.6853039220370262,
+      "pr_auc": 0.32480813428098704,
+      "brier_score": 0.14869590337218375,
+      "log_loss": 0.4638782334746084
+    }
+  ]
+}

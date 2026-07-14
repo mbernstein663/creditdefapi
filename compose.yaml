@@ -1,0 +1,18 @@
+services:
+  production:
+    profiles: [production]
+    build:
+      context: .
+      target: production
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./artifacts:/app/artifacts:ro
+
+  demo:
+    profiles: [demo]
+    build:
+      context: .
+      target: demo
+    ports:
+      - "8000:8000"

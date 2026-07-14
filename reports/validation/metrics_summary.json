@@ -1,0 +1,62 @@
+{
+  "stage": "validation",
+  "evaluation_split": "validation",
+  "rows": 187864,
+  "observed_default_rate": 0.2398916237278031,
+  "mean_predicted_default_rate": 0.23348395726336785,
+  "roc_auc": 0.6974725031992368,
+  "pr_auc": 0.40424817542453384,
+  "brier_score": 0.16619525790265546,
+  "log_loss": 0.505036787540154,
+  "selected_model": "hist_gradient_boosting",
+  "model_type": "calibrated_hist_gradient_boosting",
+  "calibration_method": "isotonic",
+  "target_name": "default",
+  "training_timestamp": "2026-07-13T01:06:54.665260+00:00",
+  "artifact_data_context": "full_lendingclub_local",
+  "artifact_label": "Full LendingClub local data",
+  "artifact_note": "Example local-run evidence from user-supplied raw LendingClub files. Raw data is not committed.",
+  "sample_rows_requested": null,
+  "split_row_counts": {
+    "train": 829355,
+    "calibration": 196607,
+    "validation": 187864,
+    "test": 134273
+  },
+  "split_summary": [
+    {
+      "split": "train",
+      "rows": 829355,
+      "default_rate": 0.18455908507213437,
+      "date_min": "2007-06-01T00:00:00",
+      "date_max": "2015-12-01T00:00:00"
+    },
+    {
+      "split": "calibration",
+      "rows": 196607,
+      "default_rate": 0.22647718545117926,
+      "date_min": "2016-01-01T00:00:00",
+      "date_max": "2016-07-01T00:00:00"
+    },
+    {
+      "split": "validation",
+      "rows": 187864,
+      "default_rate": 0.2398916237278031,
+      "date_min": "2016-08-01T00:00:00",
+      "date_max": "2017-06-01T00:00:00"
+    },
+    {
+      "split": "test",
+      "rows": 134273,
+      "default_rate": 0.19885606190373345,
+      "date_min": "2017-07-01T00:00:00",
+      "date_max": "2018-12-01T00:00:00"
+    }
+  ],
+  "limitations": [
+    "accepted-loan selection bias",
+    "rejected applications are unlabeled and excluded from supervised default modeling",
+    "not validated for production underwriting or fair-lending use"
+  ],
+  "baseline_comparison": []
+}

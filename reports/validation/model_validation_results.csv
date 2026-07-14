@@ -1,0 +1,2 @@
+model_name,calibration_method,roc_auc,pr_auc,brier_score,log_loss,mean_predicted_default_rate,observed_default_rate,cv_mean_brier_score,cv_mean_log_loss,cv_mean_absolute_calibration_gap,cv_fold_count
+hist_gradient_boosting,isotonic,0.6974725031992368,0.40424817542453384,0.16619525790265546,0.505036787540154,0.23348395726336785,0.2398916237278031,0.13986969419279544,0.4405617503074628,0.017657124946815768,4

@@ -5,13 +5,17 @@ from datetime import datetime, timezone
 import hashlib
 from importlib import metadata as importlib_metadata
 from pathlib import Path
+import platform
 from typing import Any
 
 import joblib
 
 from .config import ARTIFACT_DIR
 
-
+"""
+Defines model saving protocol: saves, loads, versions, and fingerprints model artifacts.
+Important for moving models between files and API integration.
+"""
 @dataclass
 class ModelBundle:
     model: Any
@@ -19,7 +23,6 @@ class ModelBundle:
     feature_columns: list[str]
     model_type: str
     metadata: dict = field(default_factory=dict)
-    policy: dict = field(default_factory=dict)
     required_input_schema: dict = field(default_factory=dict)
 
     def with_timestamp(self):
@@ -46,6 +49,7 @@ def bundle_path(name: str) -> Path:
 def package_versions() -> dict[str, str]:
     names = ["fastapi", "pandas", "numpy", "scikit-learn", "matplotlib", "joblib"]
     versions = {}
+    versions["python"] = platform.python_version()
     for name in names:
         try:
             versions[name] = importlib_metadata.version(name)

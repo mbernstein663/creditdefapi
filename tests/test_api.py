@@ -1,33 +1,135 @@
-from fastapi.testclient import TestClient
+from io import StringIO
+
 import pandas as pd
+import pytest
+from fastapi.testclient import TestClient
 
 import api
-from src.artifacts import ModelBundle, save_model_bundle
-from src.config import ACCEPTED_RISK_FEATURES
-from tests.test_artifacts_batch_scoring import DummyModel, IdentityCalibrator, accepted_row
+from src.artifacts import save_model_bundle
+from src.scorer import predict_default
+from tests.test_artifacts_batch_scoring import InputSensitiveModel, accepted_bundle, accepted_row
 
 
-class CapturingModel(DummyModel):
-    def __init__(self):
-        self.frame = None
-
-    def predict_proba(self, frame):
-        self.frame = frame.copy()
-        return super().predict_proba(frame)
+def test_health_works():
+    client = TestClient(api.app)
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
-def test_rejected_risk_valid_request_returns_review(monkeypatch):
-    bundle = ModelBundle(
-        DummyModel(),
-        IdentityCalibrator(),
-        ["amount_requested", "risk_score", "dti", "zip_code", "state", "employment_length"],
-        "rejected_style",
+def test_ready_reports_missing_artifact(monkeypatch, tmp_path):
+    monkeypatch.setattr(api, "DEFAULT_ACCEPTED_BUNDLE", tmp_path / "missing.joblib")
+    monkeypatch.setattr(api, "DEFAULT_FRONTEND_BUNDLE", tmp_path / "missing-frontend.joblib")
+    client = TestClient(api.app)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert "artifact_errors" in response.json()["detail"]
+
+
+def test_ready_reports_incomplete_artifact(monkeypatch, tmp_path):
+    path = tmp_path / "incomplete.joblib"
+    save_model_bundle(accepted_bundle(metadata={"model_version": "accepted-default-v1"}), path)
+    monkeypatch.setattr(api, "DEFAULT_ACCEPTED_BUNDLE", path)
+    monkeypatch.setattr(api, "DEFAULT_FRONTEND_BUNDLE", path)
+    client = TestClient(api.app)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert "missing metadata field" in str(response.json()["detail"])
+
+
+def test_model_card_returns_metadata(monkeypatch):
+    monkeypatch.setattr(api, "accepted_bundle", lambda: accepted_bundle())
+    client = TestClient(api.app)
+
+    response = client.get("/model-card")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["model_version"] == "accepted-default-v1"
+    assert body["calibration_method"] == "isotonic"
+    assert body["artifact_label"] == "Synthetic/test fixture"
+    assert "cross_validation_summary" in body
+    assert "locked_test_baseline_comparison" in body
+
+
+def test_frontend_config_returns_fields_and_defaults(monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "frontend_bundle",
+        lambda: accepted_bundle(feature_columns=["loan_amnt", "int_rate", "annual_inc", "dti", "fico_range_low"]),
     )
-    monkeypatch.setattr(api, "rejected_style_bundle", lambda: bundle)
+    client = TestClient(api.app)
+
+    response = client.get("/frontend-config")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["frontend_fields"]) == 5
+    assert body["frontend_defaults"]["dti"] == 18.4
+    assert "feature_importance" not in body
+    assert "scoring_note" not in body
+
+
+def test_score_returns_risk_only_schema(monkeypatch):
+    monkeypatch.setattr(api, "accepted_bundle", lambda: accepted_bundle())
+    client = TestClient(api.app)
+    payload = accepted_row()
+    payload.pop("id")
+
+    response = client.post("/score", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "p_default",
+        "p_non_default",
+        "risk_band",
+        "model_version",
+        "model_type",
+        "calibration_method",
+    }
+
+
+def test_score_frontend_returns_subset_model_prediction(monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "frontend_bundle",
+        lambda: accepted_bundle(feature_columns=["loan_amnt", "int_rate", "annual_inc", "dti", "fico_range_low"]),
+    )
     client = TestClient(api.app)
 
     response = client.post(
-        "/score/rejected-risk",
+        "/score-frontend",
+        json={
+            "loan_amnt": 1000,
+            "int_rate": 10,
+            "annual_inc": 50000,
+            "dti": 12,
+            "fico_range_low": 700,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["risk_band"] == "medium"
+
+
+def test_invalid_input_returns_validation_error():
+    client = TestClient(api.app)
+
+    response = client.post("/score", json={"loan_amnt": 1000})
+
+    assert response.status_code == 422
+
+
+def test_unrecognized_payload_fails_on_score_endpoint():
+    client = TestClient(api.app)
+
+    response = client.post(
+        "/score",
         json={
             "amount_requested": 1000,
             "risk_score": 700,
@@ -38,116 +140,40 @@ def test_rejected_risk_valid_request_returns_review(monkeypatch):
         },
     )
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["decision"] == "review"
-    assert body["model_note"].startswith("limited-field risk estimate")
-    assert body["lgd"] == 1.0
-
-
-def test_ready_reports_missing_artifacts(monkeypatch, tmp_path):
-    monkeypatch.setattr(api, "DEFAULT_ACCEPTED_BUNDLE", tmp_path / "missing_a.joblib")
-    monkeypatch.setattr(api, "DEFAULT_REJECTED_STYLE_BUNDLE", tmp_path / "missing_r.joblib")
-    client = TestClient(api.app)
-
-    response = client.get("/ready")
-
-    assert response.status_code == 503
-    assert "artifact_errors" in response.json()["detail"]
-
-
-def test_ready_reports_incomplete_artifacts(monkeypatch, tmp_path):
-    path = tmp_path / "incomplete.joblib"
-    save_model_bundle(
-        ModelBundle(
-            DummyModel(),
-            None,
-            [],
-            "accepted",
-            metadata={"source_fingerprint": {"size_bytes": 1, "sha256": "abc"}},
-        ),
-        path,
-    )
-    monkeypatch.setattr(api, "DEFAULT_ACCEPTED_BUNDLE", path)
-    monkeypatch.setattr(api, "DEFAULT_REJECTED_STYLE_BUNDLE", path)
-    client = TestClient(api.app)
-
-    response = client.get("/ready")
-
-    assert response.status_code == 503
-    assert "missing calibrator" in str(response.json()["detail"])
-
-
-def test_rejected_risk_invalid_request_fails_validation():
-    client = TestClient(api.app)
-
-    response = client.post("/score/rejected-risk", json={"amount_requested": 1000})
-
     assert response.status_code == 422
 
 
-def test_accepted_score_missing_model_artifact_is_clear(monkeypatch):
-    def missing():
-        raise FileNotFoundError("missing")
-
-    monkeypatch.setattr(api, "accepted_bundle", missing)
+def test_score_batch_returns_csv(monkeypatch):
+    monkeypatch.setattr(api, "accepted_bundle", lambda: accepted_bundle())
     client = TestClient(api.app)
+    frame = "id,loan_amnt,int_rate,annual_inc,dti,fico_range_low,fico_range_high,delinq_2yrs,inq_last_6mths,open_acc,pub_rec,revol_bal,revol_util,total_acc,mort_acc,acc_open_past_24mths,pub_rec_bankruptcies,grade,sub_grade,emp_length,home_ownership,verification_status,purpose,addr_state,application_type,initial_list_status\n1,1000,10,50000,12,700,704,0,0,8,0,1000,20,12,0,1,0,A,A1,4 years,RENT,Not Verified,debt_consolidation,NY,Individual,w\n"
 
     response = client.post(
-        "/score",
-        json={
-            "loan_amnt": 1000,
-            "int_rate": 10,
-            "annual_inc": 50000,
-            "dti": 12,
-            "fico_range_low": 700,
-            "fico_range_high": 704,
-            "grade": "A",
-            "sub_grade": "A1",
-            "emp_length": "4 years",
-            "home_ownership": "RENT",
-            "verification_status": "Not Verified",
-            "purpose": "debt_consolidation",
-            "addr_state": "NY",
-        },
+        "/score-batch",
+        files={"file": ("loans.csv", frame.encode("utf-8"), "text/csv")},
     )
-
-    assert response.status_code == 503
-    assert "train model first" in response.json()["detail"]
-
-
-def test_accepted_score_missing_optional_fields_are_not_zeroed(monkeypatch):
-    model = CapturingModel()
-    bundle = ModelBundle(
-        model,
-        IdentityCalibrator(),
-        list(ACCEPTED_RISK_FEATURES),
-        "accepted",
-        policy={"lgd": 1.0, "required_return": None},
-        required_input_schema={"risk_features": list(ACCEPTED_RISK_FEATURES)},
-    )
-    monkeypatch.setattr(api, "accepted_bundle", lambda: bundle)
-    client = TestClient(api.app)
-    payload = accepted_row()
-    for column in [
-        "delinq_2yrs",
-        "inq_last_6mths",
-        "open_acc",
-        "pub_rec",
-        "revol_bal",
-        "revol_util",
-        "total_acc",
-        "mort_acc",
-        "acc_open_past_24mths",
-        "pub_rec_bankruptcies",
-        "application_type",
-        "initial_list_status",
-    ]:
-        payload.pop(column)
-
-    response = client.post("/score", json=payload)
 
     assert response.status_code == 200
-    assert pd.isna(model.frame.loc[0, "delinq_2yrs"])
-    assert pd.isna(model.frame.loc[0, "initial_list_status"])
-    assert model.frame.loc[0, "delinq_2yrs"] != 0
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "p_default" in response.text
+
+
+def test_api_and_batch_raw_predictions_match_direct_bundle_prediction(monkeypatch):
+    bundle = accepted_bundle(feature_columns=["loan_amnt", "int_rate", "open_acc"])
+    bundle.model = InputSensitiveModel()
+    monkeypatch.setattr(api, "accepted_bundle", lambda: bundle)
+    raw = {"loan_amnt": 1000, "int_rate": "10%", "open_acc": 8}
+    expected = predict_default(bundle, pd.DataFrame([raw])).iloc[0]
+    client = TestClient(api.app)
+
+    api_payload = accepted_row()
+    api_payload.pop("id")
+    assert client.post("/score", json=api_payload).json()["p_default"] == pytest.approx(expected)
+
+    response = client.post(
+        "/score-batch",
+        files={"file": ("loans.csv", b"loan_amnt,int_rate,open_acc\n1000,10%,8\n", "text/csv")},
+    )
+    row = pd.read_csv(StringIO(response.text)).iloc[0]
+    assert row["p_default"] == pytest.approx(expected)
+    assert row[["loan_amnt", "int_rate", "open_acc"]].to_dict() == raw

@@ -1,219 +1,275 @@
-# LendingClub Accepted-Loan Risk/Profit Pipeline
+# Credit Default Risk API
 
-This repo is an accepted funded-loan default and profit scoring pipeline. It is not a full rejected-applicant underwriting engine.
+This repo is a LendingClub loan risk-grading ML project. It uses historical accepted and funded loans with resolved outcomes to identify additional predictive signal beyond LendingClub’s existing risk classification by producing stronger default-risk estimates.
 
-It trains calibrated default-risk models from LendingClub accepted loans with resolved repayment outcomes, then applies a simplified expected-value policy to funded-loan terms.
+This repo is not a production underwriting system. It is a default-risk modeling and deployment project that uses loans with resolved outcomes only. It includes leakage-controlled modeling, chronological validation, class calibration, model artifact preservation, FastAPI-backed scoring operations (with batch scoring), and adequate testing. There is optional Docker containerization as well.
 
-## Scope
+In a real business setting, these calibrated risk estimates could support underwriter review.
 
-- Accepted funded-loan default modeling
-- Post-hoc probability calibration
-- Simplified expected-profit and expected-return policy logic
-- Batch scoring and FastAPI scoring from saved artifacts
-- Limited-field risk estimate using accepted-loan outcomes projected onto rejected-application-style inputs
+## Results:
 
-Rejected applications do not have repayment outcomes in this dataset. They are never assigned fake `default = 0` or `default = 1` labels and are not used for supervised training, calibration, validation, locked test evaluation, or realized-profit backtesting.
+We ran four different models with cross validation and isotonic/sigmoid calibration tuning:
 
-## Target
+- Histogram gradient boosted trees
+- Random forest
+- Logistic regression
+- Class-weighted logistic regression
 
-The baseline target is eventual resolved default among accepted funded loans.
+**Selected Model:** HGB with isotonic calibration was selected during validation. It is now pinned as the final configuration in `config.yaml`.
 
-Default:
+Resulting test metrics from local run:
+
+- Rows: `134273`
+- Observed default rate: `0.1989`
+- Mean predicted default rate: `0.2223`
+- ROC-AUC: `0.7092`
+- PR-AUC: `0.3579`
+- Brier score: `0.1463`
+- Log loss: `0.4568`
+
+### Baseline comparison
+
+LendingClub uses grade (coarse) and sub-grade (detailed) risk classification to rank loans historically. We also used a constant $p_{\text{default}} = \frac{\text{training defaults}}{\text{training loans}}$ as a base rate comparison:
+
+| Model | ROC-AUC | PR-AUC | Brier | Log Loss |
+| --- | ---: | ---: | ---: | ---: |
+| Final calibrated hist gradient boosting | 0.7092 | 0.3579 | 0.1463 | 0.4568 |
+| Base rate | 0.5000 | 0.1989 | 0.1595 | 0.4995 |
+| Grade historical rate (A-G)| 0.6759 | 0.3044 | 0.1492 | 0.4660 |
+| Sub-grade historical rate (A1-G5)| 0.6853 | 0.3248 | 0.1487 | 0.4639 |
+
+**Verdict:** Our selected model learns useful information beyond LendingClub's current grading system.
+
+## Data & Target Definition
+
+We wanted to ensure a fair grading without cutting too many of our samples. We started with 2,260,701 previously accepted loans from June 2007 to December 2018 with 35 consumer attributes.
+
+- The target is binary `default`.
+- Outputs are calibrated `p_default`
+- Features are limited to application-time or underwriting-time fields.
+- Post-origination repayment fields are forbidden model inputs.
+
+After preprocessing, we ended up using 25 attributes and 1,348,099 loans with known outcomes. We purposely did not use non-accepted loans because their realized success rate is unknown and we cannot optimize default rates that way.
+
+**Default** (Bad Outcomes):
 
 - `Charged Off`
 - `Default`
 - `Does not meet the credit policy. Status:Charged Off`
 
-Non-default:
+**Non-Default** (Good outcome):
 
 - `Fully Paid`
 - `Does not meet the credit policy. Status:Fully Paid`
 
-Active, late, blank, unknown, and unresolved statuses are excluded from the baseline target. Unknown statuses fail explicitly instead of being silently labeled.
+Dropped from supervised modeling:
 
-Limitation: this target predicts resolved default among accepted/funded loans. It does not estimate risk for all applicants, and it does not solve selection bias from rejected applications.
+- `Current`
+- `In Grace Period`
+- `Late (16-30 days)`
+- `Late (31-120 days)`
+- `Issued`
+- other blank or unresolved statuses
 
-Fixed-horizon extension point: a future target such as default/charge-off within 36 months of issue date should add explicit issue-date plus performance-window logic before labeling current or unresolved loans. Do not label unresolved/current loans as good unless the fixed performance window is correctly implemented.
+### Dataset Setup
 
-## Scoring Moment
+Raw LendingClub files are not committed. 
 
-| Model path | Valid scoring moment | Fields allowed | Output limits |
-| --- | --- | --- | --- |
-| Full accepted model, `/score` | Post-pricing/post-underwriting, after LendingClub grade/rate fields exist | May use `grade`, `sub_grade`, `int_rate`, `initial_list_status` | Calibrated accepted-loan risk plus profit policy when profit inputs are present |
-| Pre-underwriting model | Before LendingClub pricing/grade assignment | Must exclude LendingClub-generated grade/rate/listing fields | Not implemented in this repo |
-| Limited-field model, `/score/rejected-risk` and frontend | Rejected-application-style triage only | Uses `amount_requested`, `risk_score`, `dti`, `zip_code`, `state`, `employment_length` | Review-only limited-field risk estimate; no true rejected-applicant default labels or realized-profit claims |
+Default expected path at repo root:
 
-## Leakage Controls
+`./accepted_2007_to_2018Q4.csv`
 
-Risk-model features are explicit allowlists in `src/config.py`. Post-origination status, payment, recovery, settlement, hardship, collection, and realized-outcome fields are forbidden as model features.
+The active default-risk pipeline requires the accepted-loan file only. Obtain the dataset from a public LendingClub archive or mirror, then place the accepted-loan file at the exact filename above, or pass a custom path with `--csv`.
 
-Profit inputs are separate from risk features:
+**KaggleHub download:**
 
-- `funded_amnt`
-- `term_months`
-- `installment`
+```
+import kagglehub
 
-`total_pymnt` is used only for realized-profit backtesting on accepted funded loans with observed outcomes.
+# Download latest version
+path = kagglehub.dataset_download("wordsforthewise/lending-club")
 
-## Profit Policy
-
-Expected profit is a simplified EV approximation:
-
-```text
-(1 - p_default) * ((installment * term_months) - funded_amnt)
-+ p_default * (-(LGD * funded_amnt))
+print("Path to dataset files:", path)
 ```
 
-Expected return:
+Link: https://www.kaggle.com/datasets/wordsforthewise/lending-club
 
-```text
-expected_return = expected_profit / funded_amnt
-```
+## Run Using Venv:
 
-The selected baseline policy uses:
+Requires `python` on local path and the accepted-loan CSV at the repo root.
 
-```text
-approve = expected_return >= required_return
-```
-
-The default LGD is `1.00` and the default required return is `0.00`. Validation reports include LGD and required-return sensitivity. The simplified EV math does not model prepayment, discounting, servicing cost, recoveries, cost of capital, or timing of default.
-
-## Direct Profit Model Challenger
-
-The direct profit challenger predicts realized loan profit directly:
-
-```text
-realized_profit = total_pymnt - funded_amnt
-```
-
-It trains only on accepted funded loans with observed repayment outcomes. Rejected loans are not used as profit labels because their repayment outcomes are unobserved.
-
-This is a challenger to the calibrated default-risk policy, not a replacement. It uses the same accepted-loan origination-time feature allowlist as the full accepted model, selects both model and approval policy on validation only, then evaluates the locked policy on the saved test split.
-
-Supported challenger policies:
-
-- approve if `predicted_profit > threshold`
-- approve top X percent by `predicted_profit`
-
-Reports compare the default-risk policy and direct-profit policy on realized profit, approval rate, default rate, and profit per dollar funded. Do not claim the challenger is better unless validation and locked-test results support it.
-
-## Quick Start
-
-In PowerShell:
-
-```powershell
-py -3.12 -m venv .venv
+```bash
+python -m venv .venv
+# PowerShell:
 .\.venv\Scripts\Activate.ps1
+# Git Bash:
+. .venv/Scripts/activate
 python -m pip install -r requirements.txt
+python -m pip install -e .[dev]
+
+python -m src.preprocessing
+python -m src.train
+
+# expects accepted-loan CSV at `./accepted_2007_to_2018Q4.csv`.
 ```
 
-Run the full pipeline:
+This writes:
 
-```powershell
-python train.py
-python train_rejected_style.py
-python train_profit.py
-python evaluate_locked.py
-python evaluate_profit_locked.py
+- `artifacts/accepted_model.joblib`
+- `artifacts/frontend_model.joblib`
+- validation reports under `reports/validation/`
+
+### Configuration:
+
+Use `config.yaml` to enable/disable cross validation, model types, or calibration types.
+
+If `training.selected_model` is omitted, candidates are selected automatically by validation mean absolute calibration gap, Brier score, log loss, CV calibration gap, CV Brier score, ROC-AUC, PR-AUC, then configured model order as the final tie-breaker. Set `training.selected_model` to one enabled model to pin it manually.
+
+To run the locked test evaluation later, once model selection is finished:
+
+```bash
+python -m evaluate_locked
 ```
 
-Run the API and frontend:
+That writes `reports/test/`. Do not treat locked test as part of the regular iteration loop.
 
-```powershell
-python -m uvicorn api:app --reload
+## API + Frontend Viewing
+
+Ensuring your `venv` is still activated, start the API:
+
+```bash
+uvicorn api:app --reload
 ```
 
-Open `http://127.0.0.1:8000/`.
+Once the API server is started, open a new terminal to perform scoring/health checks
 
-## Pipeline
+### Frontend
 
-Install:
+The frontend is a demo of an application that would help with quick underwriting decisions. Fill in five loan application attributes, it gets graded, then returns a default risk score. The endpoint uses a separate saved bundle trained on the top five application-time features from the main validation feature-importance pass. 
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
+`/frontend/index.html` is a static-file server. To run the frontend, start the API then open http://127.0.0.1:8000/ in your browser:
+
+```
+http://127.0.0.1:8000/
 ```
 
-Smoke-test accepted-loan training:
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train.py --sample 200000
+### API Health Checks + Samples
+
+```bash
+#Check liveness and readiness
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+
+
+# `/health` only checks that the service is up. `/ready` checks that both saved bundles exist and contain the required metadata. It will return `503` before training has produced artifacts, or when Docker is running without mounted artifacts.
+
+
+# Score a sample loan
+curl -X POST http://localhost:8000/score \
+  -H "Content-Type: application/json" \
+  -d '{
+    "loan_amnt": 10000,
+    "int_rate": 12.5,
+    "annual_inc": 78000,
+    "dti": 15.2,
+    "fico_range_low": 690,
+    "fico_range_high": 694,
+    "delinq_2yrs": 0,
+    "inq_last_6mths": 1,
+    "open_acc": 10,
+    "pub_rec": 0,
+    "revol_bal": 12000,
+    "revol_util": 44.1,
+    "total_acc": 24,
+    "mort_acc": 1,
+    "acc_open_past_24mths": 3,
+    "pub_rec_bankruptcies": 0,
+    "grade": "C",
+    "sub_grade": "C2",
+    "emp_length": "10+ years",
+    "home_ownership": "MORTGAGE",
+    "verification_status": "Verified",
+    "purpose": "debt_consolidation",
+    "addr_state": "CA",
+    "application_type": "Individual",
+    "initial_list_status": "w"
+  }'
 ```
 
-Smoke-test the limited-field model:
+Batch scoring sample:
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train_rejected_style.py --sample 200000
+```bash
+python -m batch docs/demo/sample_batch_input.csv docs/demo/sample_batch_output.csv --api-url http://127.0.0.1:8000
 ```
 
-Train final accepted-loan model:
+### API Endpoints
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train.py
+- `GET /health`
+- `GET /ready`
+- `GET /model-card`
+- `GET /frontend-config`
+- `POST /score`
+- `POST /score-frontend`
+- `POST /score-batch`
+
+## Docker
+
+This repo has optional Docker support if you prefer that over a venv. To build & run:
+
+```bash
+docker build -t credit-default-api .
+
+docker run --rm -p 8000:8000 -v ./artifacts:/app/artifacts credit-default-api
 ```
 
-Train final limited-field risk model:
+The Docker build excludes raw CSVs, `artifacts/`, and `reports/` by default through `.dockerignore`. That means container `/ready` will fail unless you either:
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train_rejected_style.py
+1. train on the host first and mount `./artifacts`, or
+2. mount an existing `artifacts/` directory produced elsewhere.
+
+## Methodology
+
+- `reports/validation/` is the main path for validation-stage review.
+- `reports/test/` should only be committed after a deliberate locked test run with `python -m evaluate_locked`.
+- `reports/smoke/` is for smoke/sample runs.
+
+### Split Details
+
+**Time Based Split:** four way chronological: 60-15-15-10
+
+| Split | Rows | Default Rate | Date Min | Date Max |
+| --- | --- | --- | --- | --- |
+| train | 829355 | 0.1846 | 2007-06-01T00:00:00 | 2015-12-01T00:00:00 |
+| calibration | 196607 | 0.2265 | 2016-01-01T00:00:00 | 2016-07-01T00:00:00 |
+| validation | 187864 | 0.2399 | 2016-08-01T00:00:00 | 2017-06-01T00:00:00 |
+| test | 134273 | 0.1989 | 2017-07-01T00:00:00 | 2018-12-01T00:00:00 |
+
+### Demo Files
+
+
+Look in `docs/demo/` for demo API tests.
+
+Committed demo files:
+
+- `docs/demo/sample_batch_input.csv`
+- `docs/demo/sample_batch_output.csv`
+- `docs/demo/README.md`
+
+### Tests
+
+Run:
+
+```bash
+python -m pytest
 ```
 
-Smoke-test the direct profit challenger:
+The suite covers target construction, leakage prevention, split discipline, calibration outputs, artifact round-tripping, batch scoring, API readiness, and repo-level scope guardrails.
 
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train_profit.py --sample 20000
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" evaluate_profit_locked.py --bundle artifacts\direct_profit_model_smoke.joblib
-```
+## Limitations
 
-Train final direct profit challenger:
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" train_profit.py
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" evaluate_profit_locked.py
-```
-
-Evaluate the locked accepted-loan model on the test set only after training is complete:
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" evaluate_locked.py
-```
-
-Run API:
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m uvicorn api:app --reload
-```
-
-Open `http://127.0.0.1:8000/` for the limited-field review frontend.
-
-## Reports
-
-Training writes ignored local reports under `reports/` and compact model cards under `docs/`:
-
-- split date ranges, row counts, and default rates
-- selected candidate and policy
-- ROC AUC, PR AUC, Brier score, mean predicted default rate, actual default rate
-- decile calibration table
-- subgroup calibration where available: term, grade/sub-grade, amount band
-- expected and realized validation profit metrics where available
-- LGD and required-return sensitivity on validation data
-- direct-profit challenger validation, locked-test, decile lift, and comparison outputs
-- source CSV SHA-256 fingerprint, feature list, package versions, and training timestamp
-
-Large CSVs, model binaries, and bulky generated reports are ignored by git.
-
-## Tests
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m pytest
-```
-
-Tests use synthetic data and cover target mapping, unresolved-status exclusion, no fake rejected labels, leakage guards, chronological split discipline, required-return policy behavior, artifact hashing/loading, batch scoring, API validation, and missing-field handling.
-
-## Limits
-
-- No reject inference is implemented.
-- No pre-underwriting model is implemented.
-- No realized-profit claims are made for rejected applications.
-- Candidate selection is intentionally small: balanced logistic regression versus unweighted logistic regression.
-- The full accepted model is valid only when LendingClub-generated grade/rate fields are available at the scoring moment.
-- The direct-profit challenger is trained on historical realized profit and can learn historical servicing, prepayment, and selection artifacts; treat it as an empirical challenger, not causal underwriting proof.
+- Test set may not be representative of current 2026 lending practices
+- Rejected applications are excluded because repayment outcomes are not observed.
+- No production deployment controls.
+- Fair-lending validation, monitoring, and operational controls are not in scope.
+- No policy optimization is included, just default predictions.
