@@ -1,4 +1,4 @@
-# Credit Default Risk API
+# Credit Default Risk Upgrade
 
 This repo is a LendingClub loan risk-grading ML project. It uses historical accepted and funded loans with resolved outcomes to identify additional predictive signal beyond LendingClub’s existing risk classification by producing stronger default-risk estimates.
 
