@@ -1,4 +1,4 @@
-# Credit Default Risk ML Experimentation
+# Credit Default Risk Modeling Pipeline
 
 This repo is a LendingClub loan risk-grading ML project. It uses historical accepted and funded loans with resolved outcomes to identify additional predictive signal beyond LendingClub’s existing risk classification by producing stronger default-risk estimates.
 
@@ -270,6 +270,4 @@ The suite covers target construction, leakage prevention, split discipline, cali
 
 - Test set may not be representative of current 2026 lending practices
 - Rejected applications are excluded because repayment outcomes are not observed.
-- No production deployment controls.
 - Fair-lending validation, monitoring, and operational controls are not in scope.
-- No policy optimization is included, just default predictions.
